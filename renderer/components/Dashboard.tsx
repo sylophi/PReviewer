@@ -111,7 +111,7 @@ function RepoSection({ repo }: { repo: Repo }) {
 
 function DiffGrid({ repoId, diffs }: { repoId: string; diffs: Diff[] }) {
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
       {diffs.map((diff) => (
         <DiffCard key={diff.id} repoId={repoId} diff={diff} />
       ))}
@@ -143,16 +143,18 @@ function DiffCard({ repoId, diff }: { repoId: string; diff: Diff }) {
       to="/repos/$repoId/diffs/$diffId"
       params={{ repoId, diffId: diff.id }}
       className={cn(
-        "group relative flex flex-col gap-2 rounded-xl border border-border bg-card p-4 outline-none transition-colors hover:border-foreground/30",
+        "group relative flex min-h-[180px] flex-col rounded-2xl border border-border bg-card p-5 outline-none transition-all hover:border-foreground/30 hover:shadow-sm",
         focusRing,
       )}
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <div className="min-w-0 truncate text-sm font-medium text-foreground">{diff.name}</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <h3 className="min-w-0 truncate text-base font-semibold leading-tight text-foreground">
+            {diff.name}
+          </h3>
           {diff.pinned !== null ? (
             <Pin
-              className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
+              className="mt-1 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
               aria-label="Pinned"
             />
           ) : null}
@@ -167,15 +169,36 @@ function DiffCard({ repoId, diff }: { repoId: string; diff: Diff }) {
           <Trash2 />
         </Button>
       </div>
-      <div className="truncate font-mono text-xs text-muted-foreground/80">{subtitle}</div>
-      <div className="tabular mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <span
+          className="inline-flex max-w-full items-center gap-1 truncate rounded-md border border-border/60 bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground/90"
+          title={subtitle}
+        >
+          {subtitle}
+        </span>
+        {diff.rightWorktreePath ? (
+          <span
+            className="inline-flex max-w-full items-center gap-1 truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 font-mono text-[10px] text-amber-700 dark:text-amber-300"
+            title={diff.rightWorktreePath}
+          >
+            in {tildify(diff.rightWorktreePath)}
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex-1" />
+
+      <div className="tabular mt-5 flex items-center justify-between gap-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
         <span>{formatRelativeTime(diff.updatedAt)}</span>
         {reviewedCount > 0 ? (
           <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
             <Check className="size-3" />
             {reviewedCount} reviewed
           </span>
-        ) : null}
+        ) : (
+          <span className="text-muted-foreground/50">Not started</span>
+        )}
       </div>
     </Link>
   );

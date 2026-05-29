@@ -1,6 +1,7 @@
 import { ipcMain } from "electron";
 import { CHANNELS } from "@shared/channels";
 import {
+  CreateDiffFromPrPayloadSchema,
   CreateDiffPayloadSchema,
   type Diff,
   DiffRefPayloadSchema,
@@ -14,9 +15,12 @@ import {
   type ResolvedDiff,
   SetPinPayloadSchema,
   SetReviewedPayloadSchema,
+  type Worktree,
+  WorktreesPayloadSchema,
   WriteFilePayloadSchema,
 } from "@shared/schemas";
 import { findRepoOrThrow } from "../config/repos";
+import { viewPullRequest } from "../githubCli";
 import {
   createDiff,
   deleteDiff,
@@ -33,10 +37,12 @@ import {
   listLocalBranches,
   listRecentCommits,
   listRemoteBranches,
+  listWorktrees,
   readFileAtRef,
   resolveAndDiff,
   rightSideHashForPath,
   rightSideIsLive,
+  run,
   tryResolveOrNull,
   writeFileToWorkingTree,
 } from "../git";
@@ -44,7 +50,11 @@ import {
 async function loadDiffContext(repoId: string, diffId: string) {
   const repo = await findRepoOrThrow(repoId);
   const diff = await findDiffOrThrow(repoId, diffId);
-  return { repo, diff, cwd: repo.path };
+  // All right-side git ops (workingTree reads/writes, HEAD resolution,
+  // "is live" checks) route through the bound worktree when present so
+  // a diff against a non-main worktree sees that worktree's state.
+  const cwd = diff.rightWorktreePath ?? repo.path;
+  return { repo, diff, cwd };
 }
 
 async function loadRepoContext(repoId: string) {
@@ -168,6 +178,57 @@ export function registerDiffHandlers(): void {
       const { repoId } = RecentCommitsPayloadSchema.parse(rawPayload);
       const { cwd } = await loadRepoContext(repoId);
       return listRecentCommits(cwd);
+    },
+  );
+
+  ipcMain.handle(
+    CHANNELS.ReposWorktrees,
+    async (_event, rawPayload: unknown): Promise<Worktree[]> => {
+      const { repoId } = WorktreesPayloadSchema.parse(rawPayload);
+      const { cwd } = await loadRepoContext(repoId);
+      return listWorktrees(cwd);
+    },
+  );
+
+  ipcMain.handle(
+    CHANNELS.DiffsCreateFromPullRequest,
+    async (_event, rawPayload: unknown): Promise<Diff> => {
+      const { repoId, number } = CreateDiffFromPrPayloadSchema.parse(rawPayload);
+      const { cwd } = await loadRepoContext(repoId);
+      // Pull metadata first so we fail fast if the PR is missing or gh
+      // is misconfigured.
+      const pr = await viewPullRequest(cwd, number);
+
+      // Fetch the PR head into a private ref using GitHub's pull/<n>/head
+      // refspec. This works for fork PRs too (GitHub mirrors PR heads
+      // into the base repo's refs/pull namespace). No checkout, no
+      // working-tree mutation; the user's current state is untouched.
+      const localRef = `refs/preview/pull/${number}`;
+      await run(cwd, ["fetch", "origin", `pull/${number}/head:${localRef}`]);
+
+      // Best-effort fetch of the base branch in case it has moved since
+      // the user last fetched. If this fails (offline, missing base on
+      // origin), the resolve will surface a useful error later.
+      try {
+        await run(cwd, ["fetch", "origin", pr.baseRefName]);
+      } catch {
+        // intentional: keep going so the diff still resolves against the
+        // stale local origin/<base> if that's all we have.
+      }
+
+      // The diff is mergeBase(<pr head>, origin/<base>) ↔ <pr head>.
+      // origin/<base> resolves via the standard remote-tracking ref;
+      // refs/preview/pull/<n> resolves to the PR head we just fetched.
+      return createDiff({
+        repoId,
+        name: `PR #${pr.number}: ${pr.title}`,
+        left: {
+          kind: "mergeBase",
+          a: { kind: "branch", name: localRef },
+          b: { kind: "branch", name: `origin/${pr.baseRefName}` },
+        },
+        right: { kind: "branch", name: localRef },
+      });
     },
   );
 }

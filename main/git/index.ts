@@ -17,3 +17,5 @@ export { fullFileTree } from "./tree";
 export { blobHashAtPath, blobHashesAtCommit, blobHashesAtWorkingTree } from "./hashes";
 export { enrichWithReviewed, freezeRef, rightSideHashForPath } from "./reviewed";
 export { readFileAtRef, rightSideIsLive, writeFileToWorkingTree } from "./files";
+export { listWorktrees } from "./worktrees";
+export type { Worktree } from "./worktrees";

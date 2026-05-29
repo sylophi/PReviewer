@@ -114,6 +114,20 @@ export const RecentCommitsPayloadSchema = z.object({
   repoId: z.string().min(1),
 });
 
+export const WorktreeSchema = z.object({
+  path: z.string().min(1),
+  head: z.string().min(1),
+  branch: z.string().nullable(),
+  detached: z.boolean(),
+  isMain: z.boolean(),
+  locked: z.boolean(),
+});
+export type Worktree = z.infer<typeof WorktreeSchema>;
+
+export const WorktreesPayloadSchema = z.object({
+  repoId: z.string().min(1),
+});
+
 // A persistent diff. The `reviewed` map stores the content hash of each
 // file at the time it was checked off so we can flag "needs re-review"
 // when the right side moves.
@@ -123,6 +137,10 @@ export const DiffSchema = z.object({
   name: z.string().min(1),
   left: RefExprSchema,
   right: RefExprSchema,
+  // Optional. Binds the right side's working-tree resolution (reads,
+  // writes, HEAD, "is live" checks) to this worktree. When unset, the
+  // repo's main path is used so pre-worktree diffs keep working.
+  rightWorktreePath: z.string().min(1).optional(),
   // When set, the diff freezes to these commit hashes regardless of
   // where the underlying refs move. Pin/unpin toggles this.
   pinned: z
@@ -148,6 +166,7 @@ export const CreateDiffPayloadSchema = z.object({
   name: z.string().min(1).optional(),
   left: RefExprSchema,
   right: RefExprSchema,
+  rightWorktreePath: z.string().min(1).optional(),
 });
 
 export const DiffRefPayloadSchema = z.object({
@@ -221,4 +240,30 @@ export const WriteFilePayloadSchema = z.object({
   diffId: z.string().min(1),
   path: z.string().min(1),
   content: z.string(),
+});
+
+export const GhReadinessSchema = z.object({
+  installed: z.boolean(),
+  authed: z.boolean(),
+});
+export type GhReadiness = z.infer<typeof GhReadinessSchema>;
+
+export const PullRequestSummarySchema = z.object({
+  number: z.number().int().positive(),
+  title: z.string(),
+  state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+  isDraft: z.boolean(),
+  url: z.string().url(),
+  headRefName: z.string(),
+  baseRefName: z.string(),
+});
+export type PullRequestSummary = z.infer<typeof PullRequestSummarySchema>;
+
+export const ListPullRequestsPayloadSchema = z.object({
+  repoId: z.string().min(1),
+});
+
+export const CreateDiffFromPrPayloadSchema = z.object({
+  repoId: z.string().min(1),
+  number: z.number().int().positive(),
 });

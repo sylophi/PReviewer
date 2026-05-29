@@ -58,6 +58,7 @@ interface CreateDiffInput {
   name?: string | undefined;
   left: RefExpr;
   right: RefExpr;
+  rightWorktreePath?: string | undefined;
 }
 
 export async function createDiff(input: CreateDiffInput): Promise<Diff> {
@@ -70,6 +71,7 @@ export async function createDiff(input: CreateDiffInput): Promise<Diff> {
     name: trimmedName || diffTitle(input.left, input.right),
     left: input.left,
     right: input.right,
+    ...(input.rightWorktreePath ? { rightWorktreePath: input.rightWorktreePath } : {}),
     pinned: null,
     reviewed: {},
     createdAt: now,

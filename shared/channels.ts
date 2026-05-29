@@ -15,6 +15,7 @@ export const CHANNELS = {
   ReposRemove: "repos:remove",
   ReposBranches: "repos:branches",
   ReposRecentCommits: "repos:recentCommits",
+  ReposWorktrees: "repos:worktrees",
   // Diffs
   DiffsList: "diffs:list",
   DiffsCreate: "diffs:create",
@@ -26,6 +27,10 @@ export const CHANNELS = {
   DiffsSetPin: "diffs:setPin",
   DiffsReadFile: "diffs:readFile",
   DiffsWriteFile: "diffs:writeFile",
+  DiffsCreateFromPullRequest: "diffs:createFromPullRequest",
+  // GitHub CLI
+  GhReadiness: "gh:readiness",
+  GhListPullRequests: "gh:listPullRequests",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

@@ -4,6 +4,8 @@ import { CHANNELS } from "@shared/channels";
 import type {
   Diff,
   DirectoryListing,
+  GhReadiness,
+  PullRequestSummary,
   ReadFileResult,
   RecentCommit,
   RefExpr,
@@ -12,6 +14,7 @@ import type {
   ResolvedDiff,
   RuntimeInfo,
   Theme,
+  Worktree,
 } from "@shared/schemas";
 
 function subscribe<T = void>(channel: string) {
@@ -48,6 +51,8 @@ const api = {
       ipcRenderer.invoke(CHANNELS.ReposBranches, { repoId }),
     recentCommits: (repoId: string): Promise<RecentCommit[]> =>
       ipcRenderer.invoke(CHANNELS.ReposRecentCommits, { repoId }),
+    worktrees: (repoId: string): Promise<Worktree[]> =>
+      ipcRenderer.invoke(CHANNELS.ReposWorktrees, { repoId }),
   },
   diffs: {
     list: (repoId: string): Promise<Diff[]> => ipcRenderer.invoke(CHANNELS.DiffsList, { repoId }),
@@ -56,6 +61,7 @@ const api = {
       name?: string;
       left: RefExpr;
       right: RefExpr;
+      rightWorktreePath?: string;
     }): Promise<Diff> => ipcRenderer.invoke(CHANNELS.DiffsCreate, input),
     get: (input: { repoId: string; diffId: string }): Promise<Diff> =>
       ipcRenderer.invoke(CHANNELS.DiffsGet, input),
@@ -85,6 +91,13 @@ const api = {
       path: string;
       content: string;
     }): Promise<{ ok: true }> => ipcRenderer.invoke(CHANNELS.DiffsWriteFile, input),
+    createFromPullRequest: (input: { repoId: string; number: number }): Promise<Diff> =>
+      ipcRenderer.invoke(CHANNELS.DiffsCreateFromPullRequest, input),
+  },
+  gh: {
+    readiness: (): Promise<GhReadiness> => ipcRenderer.invoke(CHANNELS.GhReadiness),
+    listPullRequests: (repoId: string): Promise<PullRequestSummary[]> =>
+      ipcRenderer.invoke(CHANNELS.GhListPullRequests, { repoId }),
   },
   window: {
     onFocused: subscribe(CHANNELS.WindowFocused),

@@ -9,6 +9,7 @@ import { useWriteFile } from "@/hooks/diffs/useWriteFile";
 import { useRepos } from "@/hooks/repos/useRepos";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
+import { tildify } from "@/lib/projectPaths";
 import { diffTitle, labelForRef } from "@/lib/refExpr";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import { Badge } from "./ui/badge";
@@ -119,6 +120,14 @@ export function DiffView() {
             <span className="truncate">{labelForRef(resolved.data.diff.left)}</span>
             <span className="text-muted-foreground/40">↔</span>
             <span className="truncate">{labelForRef(resolved.data.diff.right)}</span>
+            {resolved.data.diff.rightWorktreePath ? (
+              <span
+                className="ml-auto truncate rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
+                title={resolved.data.diff.rightWorktreePath}
+              >
+                {tildify(resolved.data.diff.rightWorktreePath)}
+              </span>
+            ) : null}
           </div>
         ) : null}
       </header>
