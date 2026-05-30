@@ -218,7 +218,7 @@ export function registerDiffHandlers(): void {
       //      merge-base equals head and the diff goes empty. The merge
       //      commit's first parent IS the base tip at merge time, so we
       //      pull that and diff against it.
-      let leftSha = await computePrLeftSha(cwd, pr);
+      const leftSha = await computePrLeftSha(cwd, pr);
 
       return createDiff({
         repoId,

@@ -5,7 +5,6 @@ export {
   listLocalBranches,
   listRecentCommits,
   listRemoteBranches,
-  PrRefsNotImplementedError,
   resolveRefToCommit,
   tryResolveOrNull,
   WorkingTreeHasNoCommitError,

@@ -1,17 +1,16 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Repo } from "@shared/schemas";
-
-const REPOS_KEY = ["repos"] as const;
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useRepos() {
   return useQuery({
-    queryKey: REPOS_KEY,
+    queryKey: queryKeys.repos(),
     queryFn: () => window.api.repos.list(),
   });
 }
 
 export function invalidateRepos(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: REPOS_KEY });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.repos() });
 }
 
 interface AddRepoArgs {

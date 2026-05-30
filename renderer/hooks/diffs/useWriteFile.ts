@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { invalidateResolvedDiff } from "./useDiffs";
 
 interface WriteFileArgs {
@@ -18,7 +19,7 @@ export function useWriteFile() {
       // on-disk truth, and refresh the resolved diff so additions /
       // deletions / needs-re-review re-compute against the new blob.
       void queryClient.invalidateQueries({
-        queryKey: ["diff", args.repoId, args.diffId, "readFile", args.path, "right"],
+        queryKey: queryKeys.readFile(args.repoId, args.diffId, args.path, "right"),
       });
       invalidateResolvedDiff(queryClient, args.repoId, args.diffId);
     },

@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Diff, GhReadiness, PullRequestSummary } from "@shared/schemas";
 import { invalidateDiffs } from "@/hooks/diffs/useDiffs";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useGhReadiness() {
   return useQuery<GhReadiness>({
-    queryKey: ["gh", "readiness"],
+    queryKey: queryKeys.ghReadiness(),
     queryFn: () => window.api.gh.readiness(),
     // The user may install / log into gh while the app is open. 30s ttl
     // matches the main-process cache.
@@ -14,7 +15,7 @@ export function useGhReadiness() {
 
 export function usePullRequests(repoId: string | null) {
   return useQuery<PullRequestSummary[]>({
-    queryKey: ["gh", "prList", repoId],
+    queryKey: queryKeys.ghPullRequests(repoId),
     queryFn: () => window.api.gh.listPullRequests(repoId!),
     enabled: repoId !== null,
     // PRs change less than refs do; the dialog re-opens often enough.

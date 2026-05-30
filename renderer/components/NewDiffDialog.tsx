@@ -19,7 +19,7 @@ import { Field, Input } from "./ui/form-controls";
 import { Segmented } from "./ui/segmented";
 import { Skeleton } from "./ui/skeleton";
 import { WorktreeCombobox } from "./ui/worktree-combobox";
-import { diffTitle } from "@/lib/refExpr";
+import { diffTitle } from "@shared/refExpr";
 import { tildify } from "@/lib/projectPaths";
 import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";

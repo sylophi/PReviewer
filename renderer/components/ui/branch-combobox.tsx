@@ -5,6 +5,7 @@ import { ChevronsUpDown, Loader2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { scoreMatch } from "@/lib/fuzzyMatch";
 import { useRepoBranches } from "@/hooks/repos/useRepoBranches";
+import { queryKeys } from "@/lib/queryKeys";
 import type { RepoBranches } from "@shared/schemas";
 
 interface BranchEntry {
@@ -67,7 +68,7 @@ export function BranchCombobox({
           setQuery("");
           if (repoId) {
             void queryClient.invalidateQueries({
-              queryKey: ["repoBranches", repoId],
+              queryKey: queryKeys.repoBranches(repoId),
             });
           }
         }

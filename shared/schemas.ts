@@ -70,15 +70,13 @@ export type RefExpr =
   | { kind: "commit"; hash: string }
   | { kind: "head" }
   | { kind: "workingTree" }
-  | { kind: "mergeBase"; a: RefExpr; b: RefExpr }
-  | { kind: "pr"; number: number };
+  | { kind: "mergeBase"; a: RefExpr; b: RefExpr };
 
 const LeafRefExprSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("branch"), name: z.string().min(1) }),
   z.object({ kind: z.literal("commit"), hash: z.string().min(1) }),
   z.object({ kind: z.literal("head") }),
   z.object({ kind: z.literal("workingTree") }),
-  z.object({ kind: z.literal("pr"), number: z.number().int().positive() }),
 ]);
 
 export const RefExprSchema: z.ZodType<RefExpr> = z.lazy(() =>

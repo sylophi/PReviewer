@@ -60,25 +60,17 @@ export function AddProjectView({ onClose }: AddProjectViewProps) {
   const submit = async (raw?: string) => {
     const target = normalizeForSubmit(raw ?? query);
     if (target.length === 0) return;
-    try {
-      const added = await addRepo.mutateAsync({ path: target });
-      notify("Repo added", added.name);
-      onClose();
-    } catch (err) {
-      notifyError("Couldn't add repo", err);
-    }
+    const added = await addRepo.mutateAsync({ path: target });
+    notify("Repo added", added.name);
+    onClose();
   };
 
   const pickViaDialog = async () => {
     const picked = await window.api.dialog.pickFolder();
     if (!picked) return;
-    try {
-      const added = await addRepo.mutateAsync({ path: picked });
-      notify("Repo added", added.name);
-      onClose();
-    } catch (err) {
-      notifyError("Couldn't add repo", err);
-    }
+    const added = await addRepo.mutateAsync({ path: picked });
+    notify("Repo added", added.name);
+    onClose();
   };
 
   const scanCurrentDir = async () => {

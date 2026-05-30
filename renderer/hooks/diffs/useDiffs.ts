@@ -6,15 +6,11 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { Diff, RefExpr, Repo, ResolvedDiff } from "@shared/schemas";
-
-const diffsKey = (repoId: string) => ["diffs", repoId] as const;
-const diffKey = (repoId: string, diffId: string) => ["diff", repoId, diffId] as const;
-const resolvedDiffKey = (repoId: string, diffId: string) =>
-  ["diff", repoId, diffId, "resolved"] as const;
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useDiffs(repoId: string) {
   return useQuery({
-    queryKey: diffsKey(repoId),
+    queryKey: queryKeys.diffsForRepo(repoId),
     queryFn: () => window.api.diffs.list(repoId),
   });
 }
@@ -30,7 +26,7 @@ export interface DiffWithRepo {
 export function useAllDiffs(repos: Repo[]) {
   const queries = useQueries({
     queries: repos.map((repo) => ({
-      queryKey: diffsKey(repo.id),
+      queryKey: queryKeys.diffsForRepo(repo.id),
       queryFn: () => window.api.diffs.list(repo.id),
     })),
   });
@@ -47,14 +43,14 @@ export function useAllDiffs(repos: Repo[]) {
 
 export function useDiff(repoId: string, diffId: string) {
   return useQuery({
-    queryKey: diffKey(repoId, diffId),
+    queryKey: queryKeys.diff(repoId, diffId),
     queryFn: () => window.api.diffs.get({ repoId, diffId }),
   });
 }
 
 export function useResolvedDiff(repoId: string | null, diffId: string | null) {
   return useQuery({
-    queryKey: resolvedDiffKey(repoId ?? "", diffId ?? ""),
+    queryKey: queryKeys.resolvedDiff(repoId ?? "", diffId ?? ""),
     queryFn: () => window.api.diffs.resolve({ repoId: repoId!, diffId: diffId! }),
     enabled: repoId !== null && diffId !== null,
     // External git changes (terminal commits, branch switches) won't
@@ -64,7 +60,7 @@ export function useResolvedDiff(repoId: string | null, diffId: string | null) {
 }
 
 export function invalidateDiffs(queryClient: QueryClient, repoId: string): void {
-  void queryClient.invalidateQueries({ queryKey: diffsKey(repoId) });
+  void queryClient.invalidateQueries({ queryKey: queryKeys.diffsForRepo(repoId) });
 }
 
 export function invalidateResolvedDiff(
@@ -73,7 +69,7 @@ export function invalidateResolvedDiff(
   diffId: string,
 ): void {
   void queryClient.invalidateQueries({
-    queryKey: resolvedDiffKey(repoId, diffId),
+    queryKey: queryKeys.resolvedDiff(repoId, diffId),
   });
 }
 

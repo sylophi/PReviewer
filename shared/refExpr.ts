@@ -12,8 +12,6 @@ export function labelForRef(ref: RefExpr): string {
       return "working tree";
     case "mergeBase":
       return `merge-base(${labelForRef(ref.a)}, ${labelForRef(ref.b)})`;
-    case "pr":
-      return `PR #${ref.number}`;
   }
 }
 

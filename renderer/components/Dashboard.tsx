@@ -9,7 +9,7 @@ import {
 } from "@/hooks/diffs/useDiffs";
 import { useRemoveRepo, useRepos } from "@/hooks/repos/useRepos";
 import { useDialogs } from "@/hooks/ui/useDialogs";
-import { diffTitle, labelForRef } from "@/lib/refExpr";
+import { diffTitle, labelForRef } from "@shared/refExpr";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { tildify } from "@/lib/projectPaths";
 import { cn, focusRing } from "@/lib/utils";

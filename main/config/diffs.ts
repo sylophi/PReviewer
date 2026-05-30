@@ -38,18 +38,9 @@ export async function getDiff(repoId: string, diffId: string): Promise<Diff | nu
   return readJsonOrNull(diffJsonPath(repoId, diffId), DiffSchema);
 }
 
-export class DiffNotFoundError extends Error {
-  readonly diffId: string;
-  constructor(diffId: string) {
-    super(`Unknown diff: ${diffId}`);
-    this.name = "DiffNotFoundError";
-    this.diffId = diffId;
-  }
-}
-
 export async function findDiffOrThrow(repoId: string, diffId: string): Promise<Diff> {
   const diff = await getDiff(repoId, diffId);
-  if (!diff) throw new DiffNotFoundError(diffId);
+  if (!diff) throw new Error(`Unknown diff: ${diffId}`);
   return diff;
 }
 

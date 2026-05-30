@@ -19,7 +19,7 @@ import { useWriteFile } from "@/hooks/diffs/useWriteFile";
 import { useWorktrees } from "@/hooks/repos/useWorktrees";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
-import { diffTitle, labelForRef } from "@/lib/refExpr";
+import { diffTitle, labelForRef } from "@shared/refExpr";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import {
   PIERRE_FONT_FAMILY,
@@ -1039,7 +1039,9 @@ function DiffEditorBody({
   const left = leftQ.data?.content ?? "";
   const right = localRight ?? rightQ.data?.content ?? "";
   const editable = rightQ.data?.editable ?? false;
-  editableRef.current = editable;
+  useEffect(() => {
+    editableRef.current = editable;
+  }, [editable]);
   const language = languageForPath(path);
 
   const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;

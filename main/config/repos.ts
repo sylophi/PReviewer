@@ -39,35 +39,17 @@ export async function getRepo(id: string): Promise<Repo | null> {
   return readJsonOrNull(repoJsonPath(id), RepoSchema);
 }
 
-export class RepoNotFoundError extends Error {
-  readonly id: string;
-  constructor(id: string) {
-    super(`Unknown repo: ${id}`);
-    this.name = "RepoNotFoundError";
-    this.id = id;
-  }
-}
-
 export async function findRepoOrThrow(id: string): Promise<Repo> {
   const repo = await getRepo(id);
-  if (!repo) throw new RepoNotFoundError(id);
+  if (!repo) throw new Error(`Unknown repo: ${id}`);
   return repo;
-}
-
-export class NotAGitRepoError extends Error {
-  readonly path: string;
-  constructor(path: string) {
-    super(`Not a git repository: ${path}`);
-    this.name = "NotAGitRepoError";
-    this.path = path;
-  }
 }
 
 // Idempotent: re-adding the same path returns the same record (the id
 // is a deterministic hash of the absolute path).
 export async function addRepo(absolutePath: string): Promise<Repo> {
   if (!(await isGitRepo(absolutePath))) {
-    throw new NotAGitRepoError(absolutePath);
+    throw new Error(`Not a git repository: ${absolutePath}`);
   }
   const id = repoIdFromPath(absolutePath);
   const existing = await getRepo(id);

@@ -10,13 +10,6 @@ export class WorkingTreeHasNoCommitError extends Error {
   }
 }
 
-export class PrRefsNotImplementedError extends Error {
-  constructor() {
-    super("pr ref expressions are resolved by the gh-cli layer");
-    this.name = "PrRefsNotImplementedError";
-  }
-}
-
 export async function resolveRefToCommit(cwd: string, ref: RefExpr): Promise<string> {
   switch (ref.kind) {
     case "commit":
@@ -34,8 +27,6 @@ export async function resolveRefToCommit(cwd: string, ref: RefExpr): Promise<str
     }
     case "workingTree":
       throw new WorkingTreeHasNoCommitError();
-    case "pr":
-      throw new PrRefsNotImplementedError();
   }
 }
 
