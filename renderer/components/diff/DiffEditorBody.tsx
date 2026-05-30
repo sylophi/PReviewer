@@ -144,14 +144,14 @@ export function DiffEditorBody({
           lineHeight: PIERRE_LINE_HEIGHT,
           fontFamily: PIERRE_FONT_FAMILY,
           minimap: { enabled: false },
-          // The overview ruler is a thin per-pane ribbon on the right
-          // edge that shows decoration markers (selection, errors). The
-          // diff editor adds a third ribbon for the diff hunks. With
-          // the scrollbar already on the right, three stacked ribbons
-          // read as visual clutter. Drop all three.
+          // Keep the diff editor's hunk overview ruler on (the strip
+          // that shows where changes live in the file and lets you
+          // click to jump to them — actually useful for review). Drop
+          // the per-pane decoration rulers (selection highlights,
+          // search match positions), which were the redundant ones
+          // next to the scrollbar.
           overviewRulerLanes: 0,
           overviewRulerBorder: false,
-          renderOverviewRuler: false,
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",
