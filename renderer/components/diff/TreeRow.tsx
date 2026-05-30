@@ -69,10 +69,26 @@ export function TreeFileRow({
   // Files indent one notch deeper than the matching chevron so the
   // basename column visually anchors under the folder name above.
   const indent = depth * 12 + 6;
+  // The whole row is the click target so the indent padding, the gap
+  // beside the checkbox, and the right padding all open the file. The
+  // checkbox is a nested button that stops propagation; everything else
+  // (icon, badge, name, diffstat) is non-interactive and bubbles up.
   return (
     <div
+      role="button"
+      tabIndex={0}
+      title={node.path}
+      onClick={() => onClick(node.path)}
+      onDoubleClick={() => onDoubleClick(node.path)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(node.path);
+        }
+      }}
       className={cn(
-        "group flex h-6 items-center gap-1.5 rounded-md pr-2 transition-colors",
+        "group flex h-6 cursor-pointer items-center gap-1.5 rounded-md pr-2 outline-none transition-colors",
+        focusRing,
         active ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted",
         file?.reviewed && !active && "opacity-60",
       )}
@@ -87,43 +103,32 @@ export function TreeFileRow({
       ) : (
         <span className="size-4 shrink-0" aria-hidden />
       )}
-      <button
-        type="button"
-        onClick={() => onClick(node.path)}
-        onDoubleClick={() => onDoubleClick(node.path)}
+      <MaterialIcon kind="file" name={node.name} className="size-3.5" />
+      {file ? (
+        <Badge tone={kindTone(file.kind)} size="sm" mono className="shrink-0">
+          {kindShort(file.kind)}
+        </Badge>
+      ) : null}
+      <span
         className={cn(
-          "flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none",
-          focusRing,
+          "min-w-0 flex-1 truncate font-mono",
+          file?.reviewed && "line-through decoration-muted-foreground/50",
+          !file && "text-muted-foreground/80",
         )}
-        title={node.path}
       >
-        <MaterialIcon kind="file" name={node.name} className="size-3.5" />
-        {file ? (
-          <Badge tone={kindTone(file.kind)} size="sm" mono className="shrink-0">
-            {kindShort(file.kind)}
-          </Badge>
-        ) : null}
-        <span
-          className={cn(
-            "min-w-0 flex-1 truncate font-mono",
-            file?.reviewed && "line-through decoration-muted-foreground/50",
-            !file && "text-muted-foreground/80",
-          )}
-        >
-          {node.name}
+        {node.name}
+      </span>
+      {file?.needsReReview ? (
+        <RefreshCcw
+          className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
+          aria-label="Needs re-review"
+        />
+      ) : file && (file.additions > 0 || file.deletions > 0) ? (
+        <span className="tabular shrink-0 text-muted-foreground/70">
+          <span className="text-emerald-500">+{file.additions}</span>{" "}
+          <span className="text-rose-500">-{file.deletions}</span>
         </span>
-        {file?.needsReReview ? (
-          <RefreshCcw
-            className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
-            aria-label="Needs re-review"
-          />
-        ) : file && (file.additions > 0 || file.deletions > 0) ? (
-          <span className="tabular shrink-0 text-muted-foreground/70">
-            <span className="text-emerald-500">+{file.additions}</span>{" "}
-            <span className="text-rose-500">-{file.deletions}</span>
-          </span>
-        ) : null}
-      </button>
+      ) : null}
     </div>
   );
 }
@@ -146,6 +151,7 @@ function ReviewedCheckbox({
         e.stopPropagation();
         onChange(!checked);
       }}
+      onDoubleClick={(e) => e.stopPropagation()}
       disabled={pending}
       title={checked ? "Mark unreviewed" : "Mark reviewed"}
       className={cn(
