@@ -17,8 +17,8 @@ import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 import { shikiToMonaco } from "@shikijs/monaco";
 import { createHighlighter, type ThemeInput } from "shiki";
-import pierreDarkSoftJson from "@pierre/theme/themes/pierre-dark-soft.json";
 import pierreLightJson from "@pierre/theme/themes/pierre-light.json";
+import { monokaiProTheme } from "./lib/monokaiProTheme";
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
@@ -86,24 +86,18 @@ for (const lang of SHIKI_LANGS) {
   monaco.languages.register({ id: lang });
 }
 
-// Slug-rename the themes' display names so consumers can reference
-// them as `pierre-dark` / `pierre-light` instead of `Pierre Dark Soft`.
-// The dark variant is the Soft palette (#171717 canvas) because the
-// regular Pierre Dark uses a near-black #0a0a0a we don't want.
-// Cast through `unknown` because the JSON uses VS Code's `tokenColors`
-// field while shiki's strict types want a `settings` array (shiki's
-// runtime accepts both forms but the type doesn't reflect that).
-const pierreDark = {
-  ...(pierreDarkSoftJson as unknown as ThemeInput),
-  name: "pierre-dark",
-} as ThemeInput;
+// Dark theme is Monokai Pro (hand-rolled in ./lib/monokaiProTheme).
+// Light theme stays Pierre Light. Cast through `unknown` because the
+// Pierre JSON uses VS Code's `tokenColors` field while shiki's strict
+// types want a `settings` array (shiki's runtime accepts both forms
+// but the type doesn't reflect that).
 const pierreLight = {
   ...(pierreLightJson as unknown as ThemeInput),
   name: "pierre-light",
 } as ThemeInput;
 
 const highlighter = await createHighlighter({
-  themes: [pierreDark, pierreLight],
+  themes: [monokaiProTheme, pierreLight],
   langs: [...SHIKI_LANGS],
 });
 

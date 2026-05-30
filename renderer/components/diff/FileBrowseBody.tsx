@@ -54,7 +54,7 @@ export function FileBrowseBody({
       <Editor
         value={content}
         language={languageForPath(path)}
-        theme={resolved === "dark" ? "pierre-dark" : "pierre-light"}
+        theme={resolved === "dark" ? "monokai-pro" : "pierre-light"}
         onMount={onMount}
         options={{
           readOnly: true,
@@ -65,11 +65,6 @@ export function FileBrowseBody({
           minimap: { enabled: false },
           overviewRulerLanes: 0,
           overviewRulerBorder: false,
-          scrollbar: {
-            verticalScrollbarSize: 10,
-            horizontalScrollbarSize: 10,
-            useShadows: false,
-          },
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",

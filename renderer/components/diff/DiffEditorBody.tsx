@@ -129,7 +129,7 @@ export function DiffEditorBody({
         original={left}
         modified={right}
         language={language}
-        theme={resolved === "dark" ? "pierre-dark" : "pierre-light"}
+        theme={resolved === "dark" ? "monokai-pro" : "pierre-light"}
         onMount={onMount}
         options={{
           readOnly: !editable,
@@ -145,19 +145,13 @@ export function DiffEditorBody({
           fontFamily: PIERRE_FONT_FAMILY,
           minimap: { enabled: false },
           // Keep the diff editor's hunk overview ruler on (the strip
-          // that shows where changes live and lets you click-to-jump);
-          // drop the per-pane decoration rulers (selection highlights,
-          // search match positions) which were the redundant ones.
+          // that shows where changes live in the file and lets you
+          // click to jump to them — actually useful for review). Drop
+          // the per-pane decoration rulers (selection highlights,
+          // search match positions), which were the redundant ones
+          // next to the scrollbar.
           overviewRulerLanes: 0,
           overviewRulerBorder: false,
-          // Thin scrollbars so the right edge (scrollbar + diff hunk
-          // overview, stacked) doesn't tower over the left edge (just
-          // a scrollbar). Default 14 → 10 shaves ~30% off the gap.
-          scrollbar: {
-            verticalScrollbarSize: 10,
-            horizontalScrollbarSize: 10,
-            useShadows: false,
-          },
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",
