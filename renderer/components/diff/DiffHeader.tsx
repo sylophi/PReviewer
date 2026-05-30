@@ -21,6 +21,8 @@ export function DiffHeader({
   const reviewed = files ? files.filter((f) => f.reviewed).length : 0;
   const total = files ? files.length : 0;
   const needsCount = files ? files.filter((f) => f.needsReReview).length : 0;
+  const additions = files ? files.reduce((a, f) => a + f.additions, 0) : 0;
+  const deletions = files ? files.reduce((a, f) => a + f.deletions, 0) : 0;
   return (
     <AppToolbar>
       <Link
@@ -41,15 +43,24 @@ export function DiffHeader({
       {diff ? <HeaderChip diff={diff} boundWorktree={boundWorktree} /> : null}
       <div className="flex-1" />
       {files && total > 0 ? (
-        <span
-          className="tabular shrink-0 text-xs text-muted-foreground"
-          title={`${reviewed} of ${total} files reviewed`}
-        >
-          <span className={reviewed === total ? "text-emerald-600 dark:text-emerald-400" : ""}>
-            {reviewed}
+        <>
+          <span
+            className="tabular shrink-0 text-xs text-muted-foreground"
+            title={`+${additions} / -${deletions} across ${total} file${total === 1 ? "" : "s"}`}
+          >
+            <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>{" "}
+            <span className="text-rose-600 dark:text-rose-400">-{deletions}</span>
           </span>
-          <span className="text-muted-foreground/50">/{total}</span>
-        </span>
+          <span
+            className="tabular shrink-0 text-xs text-muted-foreground"
+            title={`${reviewed} of ${total} files reviewed`}
+          >
+            <span className={reviewed === total ? "text-emerald-600 dark:text-emerald-400" : ""}>
+              {reviewed}
+            </span>
+            <span className="text-muted-foreground/50">/{total}</span>
+          </span>
+        </>
       ) : null}
       {needsCount > 0 ? (
         <span

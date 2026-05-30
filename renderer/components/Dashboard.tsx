@@ -6,6 +6,7 @@ import {
   useAllDiffs,
   useDeleteDiff,
   useDiffs,
+  useResolvedDiff,
 } from "@/hooks/diffs/useDiffs";
 import { useRemoveRepo, useRepos } from "@/hooks/repos/useRepos";
 import { useDialogs } from "@/hooks/ui/useDialogs";
@@ -193,10 +194,20 @@ function DiffCard({
 }) {
   const deleteDiff = useDeleteDiff();
   const { confirm } = useDialogs();
+  // The diff record itself doesn't carry file counts or line stats;
+  // they're derived from the resolved diff. Fire the resolve query so
+  // the card can show "N files +A -D" alongside the review progress.
+  // staleTime: Infinity in the hook means subsequent dashboard mounts
+  // (and navigating into the DiffView) reuse the same cache entry.
+  const resolved = useResolvedDiff(repo.id, diff.id);
 
   const refLeft = labelForRef(diff.left);
   const refRight = labelForRef(diff.right);
   const reviewed = reviewedCount(diff);
+  const files = resolved.data?.files ?? null;
+  const totalFiles = files ? files.length : null;
+  const additions = files ? files.reduce((a, f) => a + f.additions, 0) : 0;
+  const deletions = files ? files.reduce((a, f) => a + f.deletions, 0) : 0;
 
   const onDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -249,17 +260,64 @@ function DiffCard({
 
       <div className="flex-1" />
 
-      {/* Footer: meta left, status right */}
+      {/* Footer: meta left, metrics middle, status right */}
       <div className="tabular flex items-center justify-between gap-3 text-xs text-muted-foreground">
         <span className="truncate">
           {showRepoName ? repo.name : formatRelativeTime(diff.createdAt)}
         </span>
-        <ProgressLabel reviewed={reviewed} />
+        <DiffMetrics
+          totalFiles={totalFiles}
+          additions={additions}
+          deletions={deletions}
+          loading={resolved.isLoading}
+        />
+        <ProgressLabel reviewed={reviewed} total={totalFiles} />
       </div>
 
       {/* Progress bar */}
-      <ProgressBar reviewed={reviewed} />
+      <ProgressBar reviewed={reviewed} total={totalFiles} />
     </Link>
+  );
+}
+
+// "N files +A -D" once the resolve query lands. Render an em-dash
+// placeholder while loading so the footer height doesn't pop, and
+// nothing on a resolve error (the global mutation toast already
+// surfaces failures; the card stays useable without metrics).
+function DiffMetrics({
+  totalFiles,
+  additions,
+  deletions,
+  loading,
+}: {
+  totalFiles: number | null;
+  additions: number;
+  deletions: number;
+  loading: boolean;
+}) {
+  if (totalFiles === null) {
+    return (
+      <span className="text-muted-foreground/40" aria-hidden>
+        {loading ? "…" : ""}
+      </span>
+    );
+  }
+  if (totalFiles === 0) {
+    return <span className="text-muted-foreground/50">no changes</span>;
+  }
+  return (
+    <span
+      className="flex shrink-0 items-center gap-2"
+      title={`${totalFiles} file${totalFiles === 1 ? "" : "s"} changed, +${additions} / -${deletions}`}
+    >
+      <span>
+        {totalFiles} file{totalFiles === 1 ? "" : "s"}
+      </span>
+      <span>
+        <span className="text-emerald-600 dark:text-emerald-400">+{additions}</span>{" "}
+        <span className="text-rose-600 dark:text-rose-400">-{deletions}</span>
+      </span>
+    </span>
   );
 }
 
@@ -302,25 +360,56 @@ function RefPairChip({ left, right }: { left: string; right: string }) {
   );
 }
 
-function ProgressLabel({ reviewed }: { reviewed: number }) {
-  if (reviewed === 0) return <span className="text-muted-foreground/50">Not started</span>;
-  // No denominator persisted at the dashboard level; show the absolute count.
-  // The user gets the X/Y view inside the DiffView header.
+function ProgressLabel({
+  reviewed,
+  total,
+}: {
+  reviewed: number;
+  total: number | null;
+}) {
+  if (total === null) {
+    // Resolve hasn't landed yet; show the absolute reviewed count if
+    // any, otherwise nothing (placeholder lives in DiffMetrics).
+    if (reviewed === 0) return <span className="text-muted-foreground/50">Not started</span>;
+    return (
+      <span className="text-emerald-600 dark:text-emerald-400">{reviewed} reviewed</span>
+    );
+  }
+  if (total === 0) return <span className="text-muted-foreground/50">no changes</span>;
+  const done = reviewed === total;
   return (
-    <span className="text-emerald-600 dark:text-emerald-400">
-      {reviewed} reviewed
+    <span
+      className={cn(
+        "shrink-0",
+        done ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground",
+      )}
+    >
+      {reviewed}/{total} reviewed
     </span>
   );
 }
 
-function ProgressBar({ reviewed }: { reviewed: number }) {
+function ProgressBar({
+  reviewed,
+  total,
+}: {
+  reviewed: number;
+  total: number | null;
+}) {
   // Hairline track for not-started so cards still have a bottom edge;
-  // emerald accent fill once anything is reviewed. Width is intentionally
-  // not a percentage because the denominator (total files) isn't known
-  // at the dashboard level; the bar's presence is the signal.
+  // emerald accent fill scales with the reviewed fraction once the
+  // resolve query lands. Pre-resolve we can't compute a percent, so
+  // any reviewed-but-unknown-total just paints full-width.
   if (reviewed === 0) return <div className="-mx-5 -mb-5 h-[2px] bg-border/60" />;
+  const pct =
+    total === null || total === 0 ? 100 : Math.min(100, Math.round((reviewed / total) * 100));
   return (
-    <div className="-mx-5 -mb-5 h-[3px] bg-emerald-500/80 dark:bg-emerald-400/70" />
+    <div className="-mx-5 -mb-5 h-[3px] bg-border/60">
+      <div
+        className="h-full bg-emerald-500/80 dark:bg-emerald-400/70"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
   );
 }
 
