@@ -5,7 +5,7 @@ export function LoadingSkeleton({ width }: { width: number }) {
   return (
     <aside
       style={{ width }}
-      className="shrink-0 border-r border-border bg-card/30 p-3"
+      className="shrink-0 bg-card/30 p-3"
     >
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: 8 }).map((_, i) => (

@@ -67,6 +67,13 @@ export function FileBrowseBody({
           wordWrap: "off",
           renderWhitespace: "none",
           guides: { indentation: false },
+          // Match DiffEditorBody's trimmed gutter so the two editor
+          // surfaces line up when the user switches between changed and
+          // unchanged files in the same tab area.
+          glyphMargin: false,
+          folding: false,
+          lineNumbersMinChars: 3,
+          lineDecorationsWidth: 4,
         }}
       />
     </div>

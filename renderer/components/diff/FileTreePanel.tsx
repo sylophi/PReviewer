@@ -128,7 +128,7 @@ export function FileTreePanel({
   return (
     <aside
       style={{ width }}
-      className="flex shrink-0 flex-col border-r border-border bg-card/30"
+      className="flex shrink-0 flex-col bg-card/30"
     >
       <div className="flex shrink-0 flex-col gap-2 px-3 py-2.5">
         <div className="flex items-baseline gap-2">

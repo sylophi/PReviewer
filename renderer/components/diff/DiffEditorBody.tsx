@@ -134,6 +134,10 @@ export function DiffEditorBody({
         options={{
           readOnly: !editable,
           renderSideBySide: diffStyle === "split",
+          // Without this, Monaco silently collapses split to inline when
+          // the editor width drops below an internal threshold, which
+          // made the Split/Unified toggle feel broken at narrow widths.
+          useInlineViewWhenSpaceIsLimited: false,
           originalEditable: false,
           automaticLayout: true,
           fontSize: PIERRE_FONT_SIZE,
@@ -145,6 +149,15 @@ export function DiffEditorBody({
           renderWhitespace: "none",
           guides: { indentation: false },
           diffWordWrap: "off",
+          // Tighten the gutter. Default reserves space for 5-digit line
+          // numbers + a glyph margin + a folding column, ~70px total.
+          // Folding is redundant in a diff view (Monaco already
+          // collapses unchanged hunks); the glyph margin (breakpoints,
+          // error markers) is unused here.
+          glyphMargin: false,
+          folding: false,
+          lineNumbersMinChars: 3,
+          lineDecorationsWidth: 4,
         }}
       />
     </div>
