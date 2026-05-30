@@ -112,5 +112,5 @@ loader.config({ monaco });
 // from here so consumers don't import a separate file purely for these.
 export const PIERRE_FONT_FAMILY =
   '"SF Mono", Monaco, Consolas, "Ubuntu Mono", "Liberation Mono", "Courier New", monospace';
-export const PIERRE_FONT_SIZE = 13;
-export const PIERRE_LINE_HEIGHT = 20;
+export const PIERRE_FONT_SIZE = 12;
+export const PIERRE_LINE_HEIGHT = 18;
