@@ -148,49 +148,48 @@ function mergeStatusAndNumstat(statusRaw: string, numstatRaw: string): FileChang
   });
 }
 
-// git diff --name-status -z records: "<S>\t<path>\0", or for renames
-// "R<score>\t<from>\0<to>\0".
+// git diff --name-status -z records: status and path are NUL-separated
+// (not tab-separated as in the non-z form), so each entry takes two
+// slots: "<S>\0<path>\0". Renames/copies take three: "R<score>\0<from>\0<to>\0".
 function parseNameStatus(raw: string): FileChange[] {
   const parts = raw.split("\0");
   const out: FileChange[] = [];
   let i = 0;
   while (i < parts.length) {
-    const head = parts[i];
-    if (!head) {
+    const code = parts[i];
+    if (!code) {
       i++;
       continue;
     }
-    const tabIdx = head.indexOf("\t");
-    if (tabIdx < 0) {
-      i++;
-      continue;
-    }
-    const statusCode = head.slice(0, tabIdx);
-    const first = head.slice(tabIdx + 1);
-    const kind = statusCodeToKind(statusCode);
-    if (statusCode.startsWith("R") || statusCode.startsWith("C")) {
-      const to = parts[i + 1] ?? first;
-      out.push({
-        path: to,
-        fromPath: first,
-        kind: "renamed",
-        additions: 0,
-        deletions: 0,
-        reviewed: false,
-        needsReReview: false,
-      });
-      i += 2;
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const from = parts[i + 1];
+      const to = parts[i + 2];
+      if (from && to) {
+        out.push({
+          path: to,
+          fromPath: from,
+          kind: "renamed",
+          additions: 0,
+          deletions: 0,
+          reviewed: false,
+          needsReReview: false,
+        });
+      }
+      i += 3;
     } else {
-      out.push({
-        path: first,
-        fromPath: first,
-        kind,
-        additions: 0,
-        deletions: 0,
-        reviewed: false,
-        needsReReview: false,
-      });
-      i++;
+      const path = parts[i + 1];
+      if (path) {
+        out.push({
+          path,
+          fromPath: path,
+          kind: statusCodeToKind(code),
+          additions: 0,
+          deletions: 0,
+          reviewed: false,
+          needsReReview: false,
+        });
+      }
+      i += 2;
     }
   }
   return out;
@@ -203,14 +202,31 @@ function statusCodeToKind(code: string): FileChange["kind"] {
   return "modified";
 }
 
-// --numstat -z: "<adds>\t<dels>\t<path>\0". Binary files emit
+// --numstat -z: "<adds>\t<dels>\t<path>\0" for normal entries, but
+// renames split the path across the NUL boundary too:
+// "<adds>\t<dels>\t\0<from>\0<to>\0". Binary files emit
 // "-\t-\t<path>\0"; recorded as 0/0 here.
 function parseNumstat(raw: string): Map<string, [number, number]> {
   const out = new Map<string, [number, number]>();
-  for (const record of raw.split("\0")) {
-    if (!record) continue;
+  const parts = raw.split("\0");
+  let i = 0;
+  while (i < parts.length) {
+    const record = parts[i];
+    if (!record) {
+      i++;
+      continue;
+    }
     const [adds, dels, ...rest] = record.split("\t");
-    const path = rest.join("\t");
+    let path = rest.join("\t");
+    if (path === "") {
+      // Rename record: the two trailing fields after the empty path
+      // slot are the from / to paths, NUL-separated.
+      const to = parts[i + 2];
+      if (to) path = to;
+      i += 3;
+    } else {
+      i++;
+    }
     if (!path) continue;
     const a = adds === "-" ? 0 : Number(adds);
     const d = dels === "-" ? 0 : Number(dels);

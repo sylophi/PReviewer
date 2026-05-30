@@ -1,12 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { FolderGit2, FolderOpen, GitBranch, Pin, Plus, Trash2 } from "lucide-react";
+import { FolderGit2, FolderOpen, GitBranch, Plus, Trash2 } from "lucide-react";
 import type { Diff, Repo } from "@shared/schemas";
 import {
   type DiffWithRepo,
   useAllDiffs,
   useDeleteDiff,
   useDiffs,
-  useSetPin,
 } from "@/hooks/diffs/useDiffs";
 import { useRemoveRepo, useRepos } from "@/hooks/repos/useRepos";
 import { useDialogs } from "@/hooks/ui/useDialogs";
@@ -24,11 +23,8 @@ export function Dashboard() {
   const hasRepos = repos.length > 0;
   const all = useAllDiffs(repos);
 
-  const pinned = all.items
-    .filter((d) => d.diff.pinned !== null)
-    .sort(byCreatedDesc);
   const inProgress = all.items
-    .filter((d) => d.diff.pinned === null && reviewedCount(d.diff) > 0)
+    .filter((d) => reviewedCount(d.diff) > 0)
     .sort(byCreatedDesc);
 
   return (
@@ -47,7 +43,6 @@ export function Dashboard() {
       <main className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && !hasRepos ? null : hasRepos ? (
           <div className="mx-auto flex max-w-5xl flex-col gap-10 px-8 pt-4 pb-16">
-            {pinned.length > 0 ? <PinnedStrip items={pinned} /> : null}
             {inProgress.length > 0 ? <InProgressBand items={inProgress} /> : null}
             <RepoSections repos={repos} />
           </div>
@@ -77,23 +72,6 @@ function byCreatedDesc(a: DiffWithRepo, b: DiffWithRepo): number {
 
 function reviewedCount(diff: Diff): number {
   return Object.keys(diff.reviewed).length;
-}
-
-function PinnedStrip({ items }: { items: DiffWithRepo[] }) {
-  return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        Pinned
-      </h2>
-      <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
-        {items.map((it) => (
-          <div key={`${it.repo.id}:${it.diff.id}`} className="shrink-0 basis-[360px]">
-            <DiffCard repo={it.repo} diff={it.diff} showRepoName />
-          </div>
-        ))}
-      </div>
-    </section>
-  );
 }
 
 function InProgressBand({ items }: { items: DiffWithRepo[] }) {
@@ -143,12 +121,12 @@ function RepoSection({ repo }: { repo: Repo }) {
     });
   };
 
-  // Per-repo grid is the surface for diffs that aren't pinned and haven't
-  // been touched yet. Pinned and In progress live in cross-repo bands above
-  // so the resume target isn't buried under a repo header.
+  // Per-repo grid is the surface for diffs that haven't been touched
+  // yet. In-progress diffs live in the cross-repo band above so the
+  // resume target isn't buried under a repo header.
   const all = diffs.data ?? [];
   const items = all
-    .filter((d) => d.pinned === null && reviewedCount(d) === 0)
+    .filter((d) => reviewedCount(d) === 0)
     .sort((a, b) => b.createdAt - a.createdAt);
   const hasOnlyBandedDiffs = all.length > 0 && items.length === 0;
 
@@ -214,13 +192,11 @@ function DiffCard({
   showRepoName?: boolean;
 }) {
   const deleteDiff = useDeleteDiff();
-  const setPin = useSetPin();
   const { confirm } = useDialogs();
 
   const refLeft = labelForRef(diff.left);
   const refRight = labelForRef(diff.right);
   const reviewed = reviewedCount(diff);
-  const pinned = diff.pinned !== null;
 
   const onDelete = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -237,12 +213,6 @@ function DiffCard({
     });
   };
 
-  const onTogglePin = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setPin.mutate({ repoId: repo.id, diffId: diff.id, pinned: !pinned });
-  };
-
   return (
     <Link
       to="/repos/$repoId/diffs/$diffId"
@@ -252,37 +222,21 @@ function DiffCard({
         focusRing,
       )}
     >
-      {/* Row 1: worktree binding + actions. Always rendered so every
-          card reads consistently and the user can see at a glance which
-          checkout the diff is bound to. Main is neutral; non-main is
-          amber so attached worktrees pop. */}
+      {/* Row 1: worktree binding + delete. Worktree is always rendered
+          so every card reads consistently and the user can see at a
+          glance which checkout the diff is bound to. Main is neutral;
+          non-main is amber so attached worktrees pop. */}
       <div className="flex items-start justify-between gap-3">
         <WorktreeBindingRow path={diff.rightWorktreePath ?? null} />
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onDelete}
-            className="opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-            title="Delete diff"
-          >
-            <Trash2 />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onTogglePin}
-            className={cn(
-              "transition-opacity focus-visible:opacity-100",
-              pinned
-                ? "text-foreground/80 opacity-100"
-                : "text-muted-foreground/70 opacity-0 group-hover:opacity-100",
-            )}
-            title={pinned ? "Unpin" : "Pin"}
-          >
-            <Pin className={pinned ? "fill-current" : ""} />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onDelete}
+          className="opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+          title="Delete diff"
+        >
+          <Trash2 />
+        </Button>
       </div>
 
       {/* Diff name */}

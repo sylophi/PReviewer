@@ -8,12 +8,11 @@ import {
   ChevronRight,
   FileText,
   FolderGit2,
-  Pin,
   RefreshCcw,
   X,
 } from "lucide-react";
 import type { Diff, FileChange, Worktree } from "@shared/schemas";
-import { useResolvedDiff, useSetPin, useSetReviewed } from "@/hooks/diffs/useDiffs";
+import { useResolvedDiff, useSetReviewed } from "@/hooks/diffs/useDiffs";
 import { useFullFileTree } from "@/hooks/diffs/useFullFileTree";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
 import { useWriteFile } from "@/hooks/diffs/useWriteFile";
@@ -29,7 +28,7 @@ import {
 } from "@/monaco-setup";
 import { AppToolbar, ThemeToggle, ToolbarActions } from "./AppToolbar";
 import { Badge } from "./ui/badge";
-import { Button, buttonVariants } from "./ui/button";
+import { buttonVariants } from "./ui/button";
 import { MaterialIcon } from "./ui/material-icon";
 import { Segmented } from "./ui/segmented";
 import { Skeleton } from "./ui/skeleton";
@@ -46,6 +45,26 @@ interface Tab {
   diffStyle: DiffStyle;
 }
 
+// File-tree rail is user-resizable, with the width persisted across
+// sessions. Mirrors shigomori's sidebar pattern (state in the parent,
+// resize handle as a sibling of the aside, mousedown installs document-
+// level listeners). Clamped to MIN/MAX to keep the rail usable.
+const TREE_WIDTH_KEY = "diffView.fileTreeWidth";
+const TREE_MIN = 200;
+const TREE_MAX = 600;
+const TREE_DEFAULT = 272;
+
+function readStoredTreeWidth(): number {
+  try {
+    const raw = window.localStorage.getItem(TREE_WIDTH_KEY);
+    const n = raw ? Number.parseInt(raw, 10) : NaN;
+    if (!Number.isFinite(n)) return TREE_DEFAULT;
+    return Math.min(TREE_MAX, Math.max(TREE_MIN, n));
+  } catch {
+    return TREE_DEFAULT;
+  }
+}
+
 export function DiffView() {
   const { repoId, diffId } = useParams({ from: "/repos/$repoId/diffs/$diffId" });
   const resolved = useResolvedDiff(repoId, diffId);
@@ -54,7 +73,43 @@ export function DiffView() {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [treeMode, setTreeMode] = useState<TreeMode>("changed");
+  const [treeWidth, setTreeWidth] = useState<number>(readStoredTreeWidth);
   const fullTree = useFullFileTree(repoId, diffId);
+
+  // Drag-to-resize for the file-tree rail. Captures the rail's left
+  // edge at mousedown so the new width is computed relative to it
+  // (event.clientX alone would only work if the rail sat at x=0). A
+  // local `last` tracks the freshest width for persistence, since the
+  // closure over `treeWidth` would otherwise be stale by mouseup.
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    const railEl = handle.previousElementSibling as HTMLElement | null;
+    if (!railEl) return;
+    const railLeft = railEl.getBoundingClientRect().left;
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    let last = railEl.getBoundingClientRect().width;
+    const onMove = (ev: MouseEvent) => {
+      last = Math.min(TREE_MAX, Math.max(TREE_MIN, ev.clientX - railLeft));
+      setTreeWidth(last);
+    };
+    const onUp = () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      try {
+        window.localStorage.setItem(TREE_WIDTH_KEY, String(Math.round(last)));
+      } catch {
+        // localStorage may be unavailable; not fatal.
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
 
   // Look up the worktree the right side is bound to, so the header
   // chip can show both the worktree name and its current branch without
@@ -147,8 +202,6 @@ export function DiffView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DiffHeader
-        repoId={repoId}
-        diffId={diffId}
         diffName={diffName}
         diff={resolved.data?.diff ?? null}
         files={resolved.data?.files ?? null}
@@ -156,7 +209,7 @@ export function DiffView() {
       />
       <main className="flex min-h-0 flex-1">
         {resolved.isLoading ? (
-          <LoadingSkeleton />
+          <LoadingSkeleton width={treeWidth} />
         ) : resolved.error ? (
           <ErrorState message={(resolved.error as Error).message} />
         ) : resolved.data ? (
@@ -164,6 +217,7 @@ export function DiffView() {
             <FileTreePanel
               repoId={repoId}
               diffId={diffId}
+              width={treeWidth}
               files={resolved.data.files}
               fullPaths={fullTree.data ?? null}
               fullLoading={fullTree.isLoading}
@@ -173,6 +227,7 @@ export function DiffView() {
               onClick={(p) => openFile(p, "preview")}
               onDoubleClick={(p) => openFile(p, "permanent")}
             />
+            <ResizeHandle onMouseDown={startResize} />
             <section className="flex min-w-0 flex-1 flex-col">
               <TabStrip
                 tabs={tabs}
@@ -211,29 +266,19 @@ export function DiffView() {
 }
 
 function DiffHeader({
-  repoId,
-  diffId,
   diffName,
   diff,
   files,
   boundWorktree,
 }: {
-  repoId: string;
-  diffId: string;
   diffName: string | null;
   diff: Diff | null;
   files: FileChange[] | null;
   boundWorktree: Worktree | null;
 }) {
-  const setPin = useSetPin();
   const reviewed = files ? files.filter((f) => f.reviewed).length : 0;
   const total = files ? files.length : 0;
   const needsCount = files ? files.filter((f) => f.needsReReview).length : 0;
-  const pinned = diff?.pinned !== undefined && diff?.pinned !== null;
-  const onTogglePin = () => {
-    if (!diff) return;
-    setPin.mutate({ repoId, diffId, pinned: !pinned });
-  };
   return (
     <AppToolbar>
       <Link
@@ -275,19 +320,6 @@ function DiffHeader({
       ) : null}
       <ToolbarActions>
         <ThemeToggle />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onTogglePin}
-          disabled={!diff || setPin.isPending}
-          title={pinned ? "Unpin" : "Pin"}
-          className={cn(
-            "shrink-0",
-            pinned ? "text-foreground/80" : "text-muted-foreground/70 hover:text-foreground",
-          )}
-        >
-          <Pin className={pinned ? "fill-current" : ""} />
-        </Button>
       </ToolbarActions>
     </AppToolbar>
   );
@@ -338,6 +370,7 @@ function lastSegment(path: string): string {
 function FileTreePanel({
   repoId,
   diffId,
+  width,
   files,
   fullPaths,
   fullLoading,
@@ -349,6 +382,7 @@ function FileTreePanel({
 }: {
   repoId: string;
   diffId: string;
+  width: number;
   files: FileChange[];
   fullPaths: string[] | null;
   fullLoading: boolean;
@@ -400,8 +434,9 @@ function FileTreePanel({
 
   // Collapse defaults differ by mode: Changed mode opens everything
   // (the user came here to read the diff and the set is small), Full
-  // mode opens nothing (a real repo's full tree has thousands of files
-  // and the user navigates by drilling in). We re-init on mode flip
+  // mode collapses every folder EXCEPT those that contain a changed
+  // file, so reviewers see their changes in context without losing
+  // sight of them in a thousand-file tree. We re-init on mode flip
   // and on the first time the full tree loads, but otherwise leave
   // user toggles alone so file-list refetches don't blow them away.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -413,10 +448,17 @@ function FileTreePanel({
       return;
     }
     if (!fullModeInitialized.current && allFolderPaths.length > 0) {
-      setCollapsed(new Set(allFolderPaths));
+      const changedPaths = files.map((f) => f.path);
+      const next = new Set<string>();
+      for (const folderPath of allFolderPaths) {
+        const prefix = folderPath + "/";
+        const hasChange = changedPaths.some((p) => p === folderPath || p.startsWith(prefix));
+        if (!hasChange) next.add(folderPath);
+      }
+      setCollapsed(next);
       fullModeInitialized.current = true;
     }
-  }, [mode, allFolderPaths]);
+  }, [mode, allFolderPaths, files]);
 
   const onToggleCollapse = useCallback((path: string) => {
     setCollapsed((prev) => {
@@ -443,8 +485,11 @@ function FileTreePanel({
   });
 
   return (
-    <aside className="flex w-[272px] shrink-0 flex-col border-r border-border bg-card/30">
-      <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2.5">
+    <aside
+      style={{ width }}
+      className="flex shrink-0 flex-col border-r border-border bg-card/30"
+    >
+      <div className="flex shrink-0 flex-col gap-2 px-3 py-2.5">
         <div className="flex items-baseline gap-2">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
             Files
@@ -464,7 +509,7 @@ function FileTreePanel({
             { value: "changed", label: "Changed" },
             { value: "full", label: "Full tree" },
           ]}
-          className="w-full"
+          fullWidth
         />
       </div>
       <div ref={viewportRef} className="flex-1 overflow-y-auto p-2 text-xs">
@@ -726,7 +771,7 @@ function TreeFileRow({
       >
         <MaterialIcon kind="file" name={node.name} className="size-3.5" />
         {file ? (
-          <Badge tone={kindTone(file.kind)} mono className="shrink-0">
+          <Badge tone={kindTone(file.kind)} size="sm" mono className="shrink-0">
             {kindShort(file.kind)}
           </Badge>
         ) : null}
@@ -853,14 +898,14 @@ function TabStrip({
         })}
       </div>
       {activeTab ? (
-        <div className="flex shrink-0 items-center border-l border-border px-2">
+        <div className="flex shrink-0 items-center px-2">
           <Segmented
             label="Diff layout"
             value={activeTab.diffStyle}
             onChange={(next) => onSetDiffStyle(activeTab.path, next)}
             options={[
               { value: "split", label: "Split" },
-              { value: "inline", label: "Inline" },
+              { value: "inline", label: "Unified" },
             ]}
           />
         </div>
@@ -926,6 +971,12 @@ function DiffEditorBody({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // `editable` is sourced from the IPC read result and may flip after
+  // mount. The change-content listener registered in onMount captures
+  // its closure values once, so we read editability through a ref to
+  // always see the latest value without re-running onMount.
+  const editableRef = useRef(false);
+
   useEffect(() => {
     if (localRight === null && rightQ.data !== undefined) {
       setLocalRight(rightQ.data.content ?? "");
@@ -964,7 +1015,14 @@ function DiffEditorBody({
       layout();
       window.addEventListener("resize", layout);
       const modifiedEditor = editor.getModifiedEditor();
-      modifiedEditor.onDidChangeModelContent(() => {
+      modifiedEditor.onDidChangeModelContent((e) => {
+        // Programmatic content sets (mount, prop-driven model rebuilds,
+        // external refetch) arrive with `isFlush: true` and aren't user
+        // edits. Read-only diffs (PR heads, frozen pins) also never
+        // produce real edits; if we tried to save them the main
+        // process would reject the IPC call anyway.
+        if (e.isFlush) return;
+        if (!editableRef.current) return;
         const next = modifiedEditor.getValue();
         scheduleSave(next);
       });
@@ -981,6 +1039,7 @@ function DiffEditorBody({
   const left = leftQ.data?.content ?? "";
   const right = localRight ?? rightQ.data?.content ?? "";
   const editable = rightQ.data?.editable ?? false;
+  editableRef.current = editable;
   const language = languageForPath(path);
 
   const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;
@@ -1077,15 +1136,37 @@ function SaveBadge({
   );
 }
 
-function LoadingSkeleton() {
+function LoadingSkeleton({ width }: { width: number }) {
   return (
-    <aside className="w-[272px] shrink-0 border-r border-border bg-card/30 p-3">
+    <aside
+      style={{ width }}
+      className="shrink-0 border-r border-border bg-card/30 p-3"
+    >
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className={cn("h-5", i % 2 ? "w-3/4" : "w-2/3")} />
         ))}
       </div>
     </aside>
+  );
+}
+
+// A 1px column separator with an 8px hit area, sitting between the
+// file-tree aside and the editor section. The hit area extends to
+// both sides via the inset overlay so the column is comfortable to
+// grab without making the visible line any thicker.
+function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize file tree"
+      tabIndex={-1}
+      className="relative w-px shrink-0 cursor-col-resize bg-border"
+    >
+      <div className="absolute inset-y-0 -left-1 w-2" />
+    </div>
   );
 }
 
