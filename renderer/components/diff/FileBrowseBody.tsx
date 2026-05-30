@@ -65,6 +65,11 @@ export function FileBrowseBody({
           minimap: { enabled: false },
           overviewRulerLanes: 0,
           overviewRulerBorder: false,
+          scrollbar: {
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10,
+            useShadows: false,
+          },
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",
