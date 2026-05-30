@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { Dashboard } from "@/components/Dashboard";
-import { DiffView } from "@/components/DiffView";
+import { DiffView } from "@/components/diff/DiffView";
 
 // Each route owns its own AppToolbar at the top and the route's content
 // below. The whole shell is opaque (bg-background) so the BrowserWindow
