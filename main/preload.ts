@@ -1,111 +1,27 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-import { contextBridge, ipcRenderer } from "electron";
-import { CHANNELS } from "@shared/channels";
-import type {
-  Diff,
-  DirectoryListing,
-  GhReadiness,
-  PullRequestSummary,
-  ReadFileResult,
-  RecentCommit,
-  RefExpr,
-  Repo,
-  RepoBranches,
-  ResolvedDiff,
-  RuntimeInfo,
-  Theme,
-  Worktree,
-} from "@shared/schemas";
+import { contextBridge } from "electron";
+import {
+  dialog,
+  diffs,
+  fs,
+  gh,
+  repos,
+  runtime,
+  windowApi,
+} from "@shared/ipc/client";
 
-function subscribe<T = void>(channel: string) {
-  return (handler: (payload: T) => void): (() => void) => {
-    const listener = (_e: unknown, payload: T) => handler(payload);
-    ipcRenderer.on(channel, listener);
-    return () => ipcRenderer.off(channel, listener);
-  };
-}
-
+// The contract-driven IPC layer (see shared/ipc/) autogenerates the
+// per-method calls + handler typings. This file just stitches the
+// wrapped clients into the namespace shape the renderer expects under
+// window.api.<domain>.<method>.
 const api = {
-  runtime: {
-    info: (): Promise<RuntimeInfo> => ipcRenderer.invoke(CHANNELS.RuntimeInfo),
-    setTheme: (theme: Theme): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.RuntimeSetTheme, { theme }),
-  },
-  fs: {
-    listDirectory: (path: string): Promise<DirectoryListing> =>
-      ipcRenderer.invoke(CHANNELS.FsListDirectory, { path }),
-    isGitRepo: (path: string): Promise<boolean> =>
-      ipcRenderer.invoke(CHANNELS.FsIsGitRepo, { path }),
-    scanForGitRepos: (path: string): Promise<string[]> =>
-      ipcRenderer.invoke(CHANNELS.FsScanForGitRepos, { path }),
-  },
-  dialog: {
-    pickFolder: (options?: { title?: string; buttonLabel?: string }): Promise<string | null> =>
-      ipcRenderer.invoke(CHANNELS.DialogPickFolder, options),
-  },
-  repos: {
-    list: (): Promise<Repo[]> => ipcRenderer.invoke(CHANNELS.ReposList),
-    add: (path: string): Promise<Repo> => ipcRenderer.invoke(CHANNELS.ReposAdd, { path }),
-    remove: (id: string): Promise<void> => ipcRenderer.invoke(CHANNELS.ReposRemove, { id }),
-    branches: (repoId: string): Promise<RepoBranches> =>
-      ipcRenderer.invoke(CHANNELS.ReposBranches, { repoId }),
-    recentCommits: (repoId: string): Promise<RecentCommit[]> =>
-      ipcRenderer.invoke(CHANNELS.ReposRecentCommits, { repoId }),
-    worktrees: (repoId: string): Promise<Worktree[]> =>
-      ipcRenderer.invoke(CHANNELS.ReposWorktrees, { repoId }),
-  },
-  diffs: {
-    list: (repoId: string): Promise<Diff[]> => ipcRenderer.invoke(CHANNELS.DiffsList, { repoId }),
-    create: (input: {
-      repoId: string;
-      name?: string;
-      left: RefExpr;
-      right: RefExpr;
-      rightWorktreePath?: string;
-    }): Promise<Diff> => ipcRenderer.invoke(CHANNELS.DiffsCreate, input),
-    get: (input: { repoId: string; diffId: string }): Promise<Diff> =>
-      ipcRenderer.invoke(CHANNELS.DiffsGet, input),
-    delete: (input: { repoId: string; diffId: string }): Promise<void> =>
-      ipcRenderer.invoke(CHANNELS.DiffsDelete, input),
-    resolve: (input: { repoId: string; diffId: string }): Promise<ResolvedDiff> =>
-      ipcRenderer.invoke(CHANNELS.DiffsResolve, input),
-    fullTree: (input: { repoId: string; diffId: string }): Promise<string[]> =>
-      ipcRenderer.invoke(CHANNELS.DiffsFullTree, input),
-    setReviewed: (input: {
-      repoId: string;
-      diffId: string;
-      path: string;
-      reviewed: boolean;
-    }): Promise<Diff> => ipcRenderer.invoke(CHANNELS.DiffsSetReviewed, input),
-    setPin: (input: { repoId: string; diffId: string; pinned: boolean }): Promise<Diff> =>
-      ipcRenderer.invoke(CHANNELS.DiffsSetPin, input),
-    readFile: (input: {
-      repoId: string;
-      diffId: string;
-      path: string;
-      side: "left" | "right";
-    }): Promise<ReadFileResult> => ipcRenderer.invoke(CHANNELS.DiffsReadFile, input),
-    writeFile: (input: {
-      repoId: string;
-      diffId: string;
-      path: string;
-      content: string;
-    }): Promise<{ ok: true }> => ipcRenderer.invoke(CHANNELS.DiffsWriteFile, input),
-    createFromPullRequest: (input: {
-      repoId: string;
-      number: number;
-      rightWorktreePath?: string;
-    }): Promise<Diff> => ipcRenderer.invoke(CHANNELS.DiffsCreateFromPullRequest, input),
-  },
-  gh: {
-    readiness: (): Promise<GhReadiness> => ipcRenderer.invoke(CHANNELS.GhReadiness),
-    listPullRequests: (repoId: string): Promise<PullRequestSummary[]> =>
-      ipcRenderer.invoke(CHANNELS.GhListPullRequests, { repoId }),
-  },
-  window: {
-    onFocused: subscribe(CHANNELS.WindowFocused),
-    onBlurred: subscribe(CHANNELS.WindowBlurred),
-  },
+  runtime,
+  fs,
+  dialog,
+  repos,
+  diffs,
+  gh,
+  window: windowApi,
 } as const;
 
 export type RendererApi = typeof api;

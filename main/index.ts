@@ -1,9 +1,10 @@
 import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
-import { CHANNELS } from "@shared/channels";
+import { windowContract } from "@shared/ipc/modules/window";
 import { ensurePreviewRoot } from "./app/bootstrap";
 import { readThemeSync } from "./config/global";
 import { registerIpcHandlers } from "./ipc";
+import { broadcast } from "./ipc/register";
 
 registerIpcHandlers();
 
@@ -40,8 +41,12 @@ function createWindow() {
     );
   }
 
-  const sendFocus = () => mainWindow?.webContents.send(CHANNELS.WindowFocused);
-  const sendBlur = () => mainWindow?.webContents.send(CHANNELS.WindowBlurred);
+  const sendFocus = () => {
+    if (mainWindow) broadcast(windowContract, "focused", undefined, mainWindow.webContents);
+  };
+  const sendBlur = () => {
+    if (mainWindow) broadcast(windowContract, "blurred", undefined, mainWindow.webContents);
+  };
   mainWindow.on("focus", sendFocus);
   mainWindow.on("blur", sendBlur);
 }

@@ -1,21 +1,16 @@
-import { app, ipcMain, nativeTheme } from "electron";
+import { app, nativeTheme } from "electron";
 import { homedir } from "node:os";
-import { CHANNELS } from "@shared/channels";
-import { type RuntimeInfo, SetThemePayloadSchema } from "@shared/schemas";
+import { runtimeContract } from "@shared/ipc/modules/runtime";
+import type { Handlers } from "@shared/ipc/types";
 
-export function registerRuntimeHandlers(): void {
-  ipcMain.handle(
-    CHANNELS.RuntimeInfo,
-    (): RuntimeInfo => ({
-      homedir: homedir(),
-      isDev: !app.isPackaged,
-    }),
-  );
-
+export const runtimeHandlers: Handlers<typeof runtimeContract> = {
+  info: () => ({
+    homedir: homedir(),
+    isDev: !app.isPackaged,
+  }),
   // Track the renderer's applied theme so the NSVisualEffectView material
   // follows the in-app appearance, not the OS one.
-  ipcMain.handle(CHANNELS.RuntimeSetTheme, (_event, rawPayload: unknown) => {
-    const { theme } = SetThemePayloadSchema.parse(rawPayload);
+  setTheme: ({ theme }) => {
     nativeTheme.themeSource = theme;
-  });
-}
+  },
+};

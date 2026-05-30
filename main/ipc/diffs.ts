@@ -1,24 +1,5 @@
-import { ipcMain } from "electron";
-import { CHANNELS } from "@shared/channels";
-import {
-  CreateDiffFromPrPayloadSchema,
-  CreateDiffPayloadSchema,
-  type Diff,
-  DiffRefPayloadSchema,
-  ListDiffsPayloadSchema,
-  ReadFilePayloadSchema,
-  type ReadFileResult,
-  type RecentCommit,
-  RecentCommitsPayloadSchema,
-  type RepoBranches,
-  RepoBranchesPayloadSchema,
-  type ResolvedDiff,
-  SetPinPayloadSchema,
-  SetReviewedPayloadSchema,
-  type Worktree,
-  WorktreesPayloadSchema,
-  WriteFilePayloadSchema,
-} from "@shared/schemas";
+import { diffsContract } from "@shared/ipc/modules/diffs";
+import type { Handlers } from "@shared/ipc/types";
 import { findRepoOrThrow } from "../config/repos";
 import { type PullRequestView, viewPullRequest } from "../githubCli";
 import {
@@ -30,14 +11,9 @@ import {
   setReviewed,
 } from "../config/diffs";
 import {
-  currentBranch,
   enrichWithReviewed,
   freezeRef,
   fullFileTree,
-  listLocalBranches,
-  listRecentCommits,
-  listRemoteBranches,
-  listWorktrees,
   readFileAtRef,
   resolveAndDiff,
   rightSideHashForPath,
@@ -57,62 +33,48 @@ async function loadDiffContext(repoId: string, diffId: string) {
   return { repo, diff, cwd };
 }
 
-async function loadRepoContext(repoId: string) {
-  const repo = await findRepoOrThrow(repoId);
-  return { repo, cwd: repo.path };
-}
+export const diffsHandlers: Handlers<typeof diffsContract> = {
+  list: ({ repoId }) => listDiffs(repoId),
 
-export function registerDiffHandlers(): void {
-  ipcMain.handle(CHANNELS.DiffsList, async (_event, rawPayload: unknown): Promise<Diff[]> => {
-    const { repoId } = ListDiffsPayloadSchema.parse(rawPayload);
-    return listDiffs(repoId);
-  });
-
-  ipcMain.handle(CHANNELS.DiffsCreate, async (_event, rawPayload: unknown): Promise<Diff> => {
-    const input = CreateDiffPayloadSchema.parse(rawPayload);
+  create: async (input) => {
     await findRepoOrThrow(input.repoId);
     return createDiff(input);
-  });
+  },
 
-  ipcMain.handle(CHANNELS.DiffsGet, async (_event, rawPayload: unknown): Promise<Diff> => {
-    const { repoId, diffId } = DiffRefPayloadSchema.parse(rawPayload);
-    return findDiffOrThrow(repoId, diffId);
-  });
+  get: ({ repoId, diffId }) => findDiffOrThrow(repoId, diffId),
 
-  ipcMain.handle(CHANNELS.DiffsDelete, async (_event, rawPayload: unknown): Promise<void> => {
-    const { repoId, diffId } = DiffRefPayloadSchema.parse(rawPayload);
+  delete: async ({ repoId, diffId }) => {
     await deleteDiff(repoId, diffId);
-  });
+  },
 
-  ipcMain.handle(
-    CHANNELS.DiffsResolve,
-    async (_event, rawPayload: unknown): Promise<ResolvedDiff> => {
-      const { repoId, diffId } = DiffRefPayloadSchema.parse(rawPayload);
-      const { diff, cwd } = await loadDiffContext(repoId, diffId);
-      const left = freezeRef(diff.left, diff.pinned?.leftHash);
-      const right = freezeRef(diff.right, diff.pinned?.rightHash);
-      const sides = await resolveAndDiff(cwd, left, right);
-      const files = await enrichWithReviewed(cwd, diff, sides.rightCommit, sides.files);
-      return {
-        diff,
-        leftCommit: sides.leftCommit,
-        rightCommit: sides.rightCommit,
-        patch: sides.patch,
-        files,
-      };
-    },
-  );
+  resolve: async ({ repoId, diffId }) => {
+    const { diff, cwd } = await loadDiffContext(repoId, diffId);
+    const left = freezeRef(diff.left, diff.pinned?.leftHash);
+    const right = freezeRef(diff.right, diff.pinned?.rightHash);
+    const sides = await resolveAndDiff(cwd, left, right);
+    const files = await enrichWithReviewed(cwd, diff, sides.rightCommit, sides.files);
+    return {
+      diff,
+      leftCommit: sides.leftCommit,
+      rightCommit: sides.rightCommit,
+      patch: sides.patch,
+      files,
+    };
+  },
 
-  ipcMain.handle(CHANNELS.DiffsSetReviewed, async (_event, rawPayload: unknown): Promise<Diff> => {
-    const { repoId, diffId, path, reviewed } = SetReviewedPayloadSchema.parse(rawPayload);
+  fullTree: async ({ repoId, diffId }) => {
+    const { diff, cwd } = await loadDiffContext(repoId, diffId);
+    return fullFileTree(cwd, diff.right);
+  },
+
+  setReviewed: async ({ repoId, diffId, path, reviewed }) => {
     const { diff, cwd } = await loadDiffContext(repoId, diffId);
     const right = freezeRef(diff.right, diff.pinned?.rightHash);
     const hash = await rightSideHashForPath(cwd, right, path);
     return setReviewed(repoId, diffId, path, reviewed, hash);
-  });
+  },
 
-  ipcMain.handle(CHANNELS.DiffsSetPin, async (_event, rawPayload: unknown): Promise<Diff> => {
-    const { repoId, diffId, pinned } = SetPinPayloadSchema.parse(rawPayload);
+  setPin: async ({ repoId, diffId, pinned }) => {
     const { diff, cwd } = await loadDiffContext(repoId, diffId);
     if (!pinned) return setPin(repoId, diffId, null);
     const [leftHash, rightHash] = await Promise.all([
@@ -120,116 +82,64 @@ export function registerDiffHandlers(): void {
       tryResolveOrNull(cwd, diff.right),
     ]);
     return setPin(repoId, diffId, { leftHash, rightHash });
-  });
+  },
 
-  ipcMain.handle(CHANNELS.DiffsFullTree, async (_event, rawPayload: unknown): Promise<string[]> => {
-    const { repoId, diffId } = DiffRefPayloadSchema.parse(rawPayload);
+  readFile: async ({ repoId, diffId, path, side }) => {
     const { diff, cwd } = await loadDiffContext(repoId, diffId);
-    return fullFileTree(cwd, diff.right);
-  });
+    const ref = side === "left" ? diff.left : diff.right;
+    const frozenHash = side === "left" ? diff.pinned?.leftHash : diff.pinned?.rightHash;
+    const frozen = freezeRef(ref, frozenHash);
+    const content = await readFileAtRef(cwd, frozen, path);
+    const editable =
+      side === "right" && diff.pinned === null && (await rightSideIsLive(cwd, diff.right));
+    return { content, editable };
+  },
 
-  ipcMain.handle(
-    CHANNELS.DiffsReadFile,
-    async (_event, rawPayload: unknown): Promise<ReadFileResult> => {
-      const { repoId, diffId, path, side } = ReadFilePayloadSchema.parse(rawPayload);
-      const { diff, cwd } = await loadDiffContext(repoId, diffId);
-      const ref = side === "left" ? diff.left : diff.right;
-      const frozenHash = side === "left" ? diff.pinned?.leftHash : diff.pinned?.rightHash;
-      const frozen = freezeRef(ref, frozenHash);
-      const content = await readFileAtRef(cwd, frozen, path);
-      const editable =
-        side === "right" && diff.pinned === null && (await rightSideIsLive(cwd, diff.right));
-      return { content, editable };
-    },
-  );
+  writeFile: async ({ repoId, diffId, path, content }) => {
+    const { diff, cwd } = await loadDiffContext(repoId, diffId);
+    if (diff.pinned !== null || !(await rightSideIsLive(cwd, diff.right))) {
+      throw new Error(
+        "This diff isn't editable: its right side isn't the currently checked-out branch, or the diff is pinned.",
+      );
+    }
+    await writeFileToWorkingTree(cwd, path, content);
+    return { ok: true as const };
+  },
 
-  ipcMain.handle(
-    CHANNELS.DiffsWriteFile,
-    async (_event, rawPayload: unknown): Promise<{ ok: true }> => {
-      const { repoId, diffId, path, content } = WriteFilePayloadSchema.parse(rawPayload);
-      const { diff, cwd } = await loadDiffContext(repoId, diffId);
-      if (diff.pinned !== null || !(await rightSideIsLive(cwd, diff.right))) {
-        throw new Error(
-          "This diff isn't editable: its right side isn't the currently checked-out branch, or the diff is pinned.",
-        );
-      }
-      await writeFileToWorkingTree(cwd, path, content);
-      return { ok: true };
-    },
-  );
+  createFromPullRequest: async ({ repoId, number, rightWorktreePath }) => {
+    const repo = await findRepoOrThrow(repoId);
+    const cwd = repo.path;
+    // gh's canonical SHAs for the PR. These match what `gh pr diff` uses.
+    const pr = await viewPullRequest(cwd, number);
 
-  ipcMain.handle(
-    CHANNELS.ReposBranches,
-    async (_event, rawPayload: unknown): Promise<RepoBranches> => {
-      const { repoId } = RepoBranchesPayloadSchema.parse(rawPayload);
-      const { cwd } = await loadRepoContext(repoId);
-      const [local, remote, head] = await Promise.all([
-        listLocalBranches(cwd),
-        listRemoteBranches(cwd),
-        currentBranch(cwd),
-      ]);
-      return { local, remote, currentBranch: head };
-    },
-  );
+    // Fetch the PR head into a private ref via GitHub's pull/<n>/head
+    // refspec (works for fork PRs too; GitHub mirrors PR heads into
+    // the base repo). The ref keeps the head SHA reachable across
+    // future git GCs; the working tree stays untouched.
+    const localRef = `refs/preview/pull/${number}`;
+    await run(cwd, ["fetch", "origin", `pull/${number}/head:${localRef}`]);
 
-  ipcMain.handle(
-    CHANNELS.ReposRecentCommits,
-    async (_event, rawPayload: unknown): Promise<RecentCommit[]> => {
-      const { repoId } = RecentCommitsPayloadSchema.parse(rawPayload);
-      const { cwd } = await loadRepoContext(repoId);
-      return listRecentCommits(cwd);
-    },
-  );
+    // We need the base ref locally so we can compute the three-dot
+    // merge-base — same one `gh pr diff` uses.
+    await run(cwd, ["fetch", "origin", pr.baseRefName]);
 
-  ipcMain.handle(
-    CHANNELS.ReposWorktrees,
-    async (_event, rawPayload: unknown): Promise<Worktree[]> => {
-      const { repoId } = WorktreesPayloadSchema.parse(rawPayload);
-      const { cwd } = await loadRepoContext(repoId);
-      return listWorktrees(cwd);
-    },
-  );
+    // Right side is always the PR's head SHA. Left side has two failure
+    // modes worth defending against:
+    //   1. Open PR: merge-base(head, base) is the correct three-dot anchor.
+    //   2. Merged PR: head is reachable from base, so the naive merge-base
+    //      equals head and the diff goes empty. The merge commit's first
+    //      parent IS the base tip at merge time; pull that and diff.
+    const leftSha = await computePrLeftSha(cwd, pr);
 
-  ipcMain.handle(
-    CHANNELS.DiffsCreateFromPullRequest,
-    async (_event, rawPayload: unknown): Promise<Diff> => {
-      const { repoId, number, rightWorktreePath } =
-        CreateDiffFromPrPayloadSchema.parse(rawPayload);
-      const { cwd } = await loadRepoContext(repoId);
-      // gh's canonical SHAs for the PR. These match what `gh pr diff` uses.
-      const pr = await viewPullRequest(cwd, number);
-
-      // Fetch the PR head into a private ref via GitHub's pull/<n>/head
-      // refspec (works for fork PRs too; GitHub mirrors PR heads into
-      // the base repo). The ref keeps the head SHA reachable across
-      // future git GCs; the working tree stays untouched.
-      const localRef = `refs/preview/pull/${number}`;
-      await run(cwd, ["fetch", "origin", `pull/${number}/head:${localRef}`]);
-
-      // We need the base ref locally so we can compute the three-dot
-      // merge-base — same one `gh pr diff` uses.
-      await run(cwd, ["fetch", "origin", pr.baseRefName]);
-
-      // Right side is always the PR's head SHA. The left side has two
-      // failure modes worth defending against:
-      //   1. Open PR: merge-base(head, base) is the correct three-dot
-      //      anchor and matches `gh pr diff` exactly.
-      //   2. Merged PR: head is reachable from base, so the naive
-      //      merge-base equals head and the diff goes empty. The merge
-      //      commit's first parent IS the base tip at merge time, so we
-      //      pull that and diff against it.
-      const leftSha = await computePrLeftSha(cwd, pr);
-
-      return createDiff({
-        repoId,
-        name: `PR #${pr.number}: ${pr.title}`,
-        left: { kind: "commit", hash: leftSha },
-        right: { kind: "commit", hash: pr.headRefOid },
-        ...(rightWorktreePath ? { rightWorktreePath } : {}),
-      });
-    },
-  );
-}
+    return createDiff({
+      repoId,
+      name: `PR #${pr.number}: ${pr.title}`,
+      left: { kind: "commit", hash: leftSha },
+      right: { kind: "commit", hash: pr.headRefOid },
+      ...(rightWorktreePath ? { rightWorktreePath } : {}),
+    });
+  },
+};
 
 async function computePrLeftSha(cwd: string, pr: PullRequestView): Promise<string> {
   // Merged PR with a known merge commit: its first parent is the base
