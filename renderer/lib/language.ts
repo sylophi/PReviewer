@@ -1,15 +1,17 @@
-// Maps file extension to Monaco language id. Unknown extensions render
-// as plain text. Extend as needed; Monaco supports many more languages
-// out of the box.
+// Maps file extension to a Shiki language id (which is also the Monaco
+// language id, since monaco-setup.ts registers them under the same
+// name). Unknown extensions render as plaintext. The id `tsx` is
+// distinct from `typescript` so Pierre's JSX-aware grammar fires on
+// .tsx files; same for `jsx` vs `javascript`.
 const MAP: Record<string, string> = {
   ts: "typescript",
-  tsx: "typescript",
   mts: "typescript",
   cts: "typescript",
+  tsx: "tsx",
   js: "javascript",
-  jsx: "javascript",
   mjs: "javascript",
   cjs: "javascript",
+  jsx: "jsx",
   json: "json",
   jsonc: "json",
   md: "markdown",
@@ -21,7 +23,7 @@ const MAP: Record<string, string> = {
   less: "less",
   yml: "yaml",
   yaml: "yaml",
-  toml: "ini",
+  toml: "toml",
   ini: "ini",
   py: "python",
   rs: "rust",
@@ -29,9 +31,9 @@ const MAP: Record<string, string> = {
   java: "java",
   kt: "kotlin",
   swift: "swift",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
+  sh: "shellscript",
+  bash: "shellscript",
+  zsh: "shellscript",
   sql: "sql",
   graphql: "graphql",
   gql: "graphql",
@@ -45,12 +47,12 @@ const MAP: Record<string, string> = {
   h: "cpp",
   c: "c",
   lua: "lua",
-  dockerfile: "dockerfile",
+  dockerfile: "docker",
 };
 
 export function languageForPath(path: string): string {
   const lower = path.toLowerCase();
-  if (lower.endsWith("/dockerfile") || lower === "dockerfile") return "dockerfile";
+  if (lower.endsWith("/dockerfile") || lower === "dockerfile") return "docker";
   const dot = lower.lastIndexOf(".");
   if (dot < 0) return "plaintext";
   const ext = lower.slice(dot + 1);

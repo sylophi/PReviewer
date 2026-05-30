@@ -6,3 +6,8 @@ dist
 *.log
 .env
 .env.local
+
+# Synced from node_modules/material-icon-theme by
+# scripts/copy-material-icons.mjs (postinstall). Vite serves public/ as a
+# static asset root; tracking ~1238 SVGs in git would be noise.
+public/material-icons/

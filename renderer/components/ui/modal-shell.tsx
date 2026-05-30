@@ -33,7 +33,7 @@ export function ModalShell({
         if (e.target === e.currentTarget) onClose();
       }}
       onKeyDown={onKeyDown}
-      className="fixed inset-0 z-50 flex items-start justify-center bg-background/40 p-4 pt-[10vh] backdrop-blur-[2px]"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-background/40 p-4 backdrop-blur-[2px]"
     >
       <div
         className={cn(

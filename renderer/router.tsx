@@ -10,8 +10,17 @@ import { ErrorFallback } from "@/components/ErrorFallback";
 import { Dashboard } from "@/components/Dashboard";
 import { DiffView } from "@/components/DiffView";
 
+// Each route owns its own AppToolbar at the top and the route's content
+// below. The whole shell is opaque (bg-background) so the BrowserWindow
+// vibrancy material never shows through; the app reads as a standard
+// solid-surface desktop window with traffic lights overlaying the
+// toolbar.
 function RootLayout() {
-  return <Outlet />;
+  return (
+    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
+      <Outlet />
+    </div>
+  );
 }
 
 const rootRoute = createRootRoute({ component: RootLayout });

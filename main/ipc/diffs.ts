@@ -20,7 +20,7 @@ import {
   WriteFilePayloadSchema,
 } from "@shared/schemas";
 import { findRepoOrThrow } from "../config/repos";
-import { viewPullRequest } from "../githubCli";
+import { type PullRequestView, viewPullRequest } from "../githubCli";
 import {
   createDiff,
   deleteDiff,
@@ -193,42 +193,72 @@ export function registerDiffHandlers(): void {
   ipcMain.handle(
     CHANNELS.DiffsCreateFromPullRequest,
     async (_event, rawPayload: unknown): Promise<Diff> => {
-      const { repoId, number } = CreateDiffFromPrPayloadSchema.parse(rawPayload);
+      const { repoId, number, rightWorktreePath } =
+        CreateDiffFromPrPayloadSchema.parse(rawPayload);
       const { cwd } = await loadRepoContext(repoId);
-      // Pull metadata first so we fail fast if the PR is missing or gh
-      // is misconfigured.
+      // gh's canonical SHAs for the PR. These match what `gh pr diff` uses.
       const pr = await viewPullRequest(cwd, number);
 
-      // Fetch the PR head into a private ref using GitHub's pull/<n>/head
-      // refspec. This works for fork PRs too (GitHub mirrors PR heads
-      // into the base repo's refs/pull namespace). No checkout, no
-      // working-tree mutation; the user's current state is untouched.
+      // Fetch the PR head into a private ref via GitHub's pull/<n>/head
+      // refspec (works for fork PRs too; GitHub mirrors PR heads into
+      // the base repo). The ref keeps the head SHA reachable across
+      // future git GCs; the working tree stays untouched.
       const localRef = `refs/preview/pull/${number}`;
       await run(cwd, ["fetch", "origin", `pull/${number}/head:${localRef}`]);
 
-      // Best-effort fetch of the base branch in case it has moved since
-      // the user last fetched. If this fails (offline, missing base on
-      // origin), the resolve will surface a useful error later.
-      try {
-        await run(cwd, ["fetch", "origin", pr.baseRefName]);
-      } catch {
-        // intentional: keep going so the diff still resolves against the
-        // stale local origin/<base> if that's all we have.
-      }
+      // We need the base ref locally so we can compute the three-dot
+      // merge-base — same one `gh pr diff` uses.
+      await run(cwd, ["fetch", "origin", pr.baseRefName]);
 
-      // The diff is mergeBase(<pr head>, origin/<base>) ↔ <pr head>.
-      // origin/<base> resolves via the standard remote-tracking ref;
-      // refs/preview/pull/<n> resolves to the PR head we just fetched.
+      // Right side is always the PR's head SHA. The left side has two
+      // failure modes worth defending against:
+      //   1. Open PR: merge-base(head, base) is the correct three-dot
+      //      anchor and matches `gh pr diff` exactly.
+      //   2. Merged PR: head is reachable from base, so the naive
+      //      merge-base equals head and the diff goes empty. The merge
+      //      commit's first parent IS the base tip at merge time, so we
+      //      pull that and diff against it.
+      let leftSha = await computePrLeftSha(cwd, pr);
+
       return createDiff({
         repoId,
         name: `PR #${pr.number}: ${pr.title}`,
-        left: {
-          kind: "mergeBase",
-          a: { kind: "branch", name: localRef },
-          b: { kind: "branch", name: `origin/${pr.baseRefName}` },
-        },
-        right: { kind: "branch", name: localRef },
+        left: { kind: "commit", hash: leftSha },
+        right: { kind: "commit", hash: pr.headRefOid },
+        ...(rightWorktreePath ? { rightWorktreePath } : {}),
       });
     },
   );
+}
+
+async function computePrLeftSha(cwd: string, pr: PullRequestView): Promise<string> {
+  // Merged PR with a known merge commit: its first parent is the base
+  // branch's tip at the instant of the merge, which is the canonical
+  // left side for "what did this PR change".
+  if (pr.state === "MERGED" && pr.mergeCommit?.oid) {
+    try {
+      // Make sure the merge commit is actually present in the local
+      // object DB; on a clone that never pulled main, it may not be.
+      await run(cwd, ["fetch", "origin", pr.mergeCommit.oid]).catch(() => {
+        /* the SHA might already be reachable; ignore */
+      });
+      const parent = (
+        await run(cwd, ["rev-parse", `${pr.mergeCommit.oid}^1`])
+      ).trim();
+      if (parent) return parent;
+    } catch {
+      // Fall through to the merge-base attempt below.
+    }
+  }
+  const baseSha = (await run(cwd, ["rev-parse", `origin/${pr.baseRefName}`])).trim();
+  try {
+    const mb = (await run(cwd, ["merge-base", pr.headRefOid, baseSha])).trim();
+    // Skip the degenerate case where head is reachable from base (the
+    // user is looking at a merged PR but mergeCommit wasn't available);
+    // falling back to the current base tip is the least-broken choice.
+    if (mb && mb !== pr.headRefOid) return mb;
+  } catch {
+    // No common ancestor; baseSha is the best we can do.
+  }
+  return baseSha;
 }

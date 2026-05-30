@@ -13,6 +13,7 @@ interface SegmentedProps<T extends string> {
   options: SegmentedOption<T>[];
   label: string;
   className?: string;
+  size?: "sm" | "md";
 }
 
 export function Segmented<T extends string>({
@@ -21,13 +22,17 @@ export function Segmented<T extends string>({
   options,
   label,
   className,
+  size = "sm",
 }: SegmentedProps<T>) {
+  const wrapText = size === "md" ? "text-sm" : "text-xs";
+  const btnPad = size === "md" ? "px-3 py-1.5" : "px-2 py-1";
   return (
     <div
       role="group"
       aria-label={label}
       className={cn(
-        "inline-flex shrink-0 self-center rounded-md border border-border bg-muted/30 p-0.5 text-xs",
+        "inline-flex shrink-0 self-center rounded-md border border-border bg-muted/30 p-0.5",
+        wrapText,
         className,
       )}
     >
@@ -42,7 +47,8 @@ export function Segmented<T extends string>({
             onClick={() => onChange(opt.value)}
             aria-pressed={active}
             className={cn(
-              "rounded px-2 py-1 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              "rounded outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              btnPad,
               focusRing,
               active
                 ? "bg-background text-foreground shadow-sm"

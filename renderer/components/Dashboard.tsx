@@ -1,36 +1,56 @@
 import { Link } from "@tanstack/react-router";
-import { Check, FolderOpen, GitBranch, Pin, Plus, Trash2 } from "lucide-react";
+import { FolderGit2, FolderOpen, GitBranch, Pin, Plus, Trash2 } from "lucide-react";
 import type { Diff, Repo } from "@shared/schemas";
-import { useDeleteDiff, useDiffs } from "@/hooks/diffs/useDiffs";
+import {
+  type DiffWithRepo,
+  useAllDiffs,
+  useDeleteDiff,
+  useDiffs,
+  useSetPin,
+} from "@/hooks/diffs/useDiffs";
 import { useRemoveRepo, useRepos } from "@/hooks/repos/useRepos";
 import { useDialogs } from "@/hooks/ui/useDialogs";
-import { diffTitle } from "@/lib/refExpr";
+import { diffTitle, labelForRef } from "@/lib/refExpr";
 import { formatRelativeTime } from "@/lib/relativeTime";
 import { tildify } from "@/lib/projectPaths";
-import { cn, dragRegion, focusRing } from "@/lib/utils";
+import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";
+import { AppToolbar, ThemeToggle, ToolbarActions } from "./AppToolbar";
 import { Button } from "./ui/button";
 
 export function Dashboard() {
   const { data: repos = [], isLoading } = useRepos();
   const { openAddRepo } = useDialogs();
   const hasRepos = repos.length > 0;
+  const all = useAllDiffs(repos);
+
+  const pinned = all.items
+    .filter((d) => d.diff.pinned !== null)
+    .sort(byCreatedDesc);
+  const inProgress = all.items
+    .filter((d) => d.diff.pinned === null && reviewedCount(d.diff) > 0)
+    .sort(byCreatedDesc);
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div aria-hidden className="absolute inset-x-0 top-0 z-30 h-7" style={dragRegion("drag")} />
-      <header className="flex shrink-0 items-center justify-between gap-4 px-8 pt-12 pb-6">
-        <h1 className="text-2xl font-semibold tracking-tight">Diffs</h1>
-        {hasRepos ? (
-          <Button variant="ghost" onClick={openAddRepo}>
+    <div className="flex h-full min-h-0 flex-col">
+      <AppToolbar>
+        <BrandMark />
+        <div className="flex-1" />
+        <ToolbarActions>
+          <ThemeToggle />
+          <Button variant="ghost" size="sm" onClick={openAddRepo}>
             <FolderOpen />
             Add repo
           </Button>
-        ) : null}
-      </header>
-      <main className="flex-1 overflow-y-auto px-8 pb-16">
+        </ToolbarActions>
+      </AppToolbar>
+      <main className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && !hasRepos ? null : hasRepos ? (
-          <RepoSections repos={repos} />
+          <div className="mx-auto flex max-w-5xl flex-col gap-10 px-8 pt-4 pb-16">
+            {pinned.length > 0 ? <PinnedStrip items={pinned} /> : null}
+            {inProgress.length > 0 ? <InProgressBand items={inProgress} /> : null}
+            <RepoSections repos={repos} />
+          </div>
         ) : (
           <EmptyState onAddRepo={openAddRepo} />
         )}
@@ -39,9 +59,64 @@ export function Dashboard() {
   );
 }
 
+function BrandMark() {
+  // Single wordmark next to the traffic lights. Geist Variable, slightly
+  // larger than a body label so it carries the app identity, with a
+  // softened weight so it sits in the chrome rather than asserting like
+  // a page title.
+  return (
+    <span className="select-none truncate text-[13.5px] font-semibold tracking-[-0.01em] text-foreground/90">
+      PReview
+    </span>
+  );
+}
+
+function byCreatedDesc(a: DiffWithRepo, b: DiffWithRepo): number {
+  return b.diff.createdAt - a.diff.createdAt;
+}
+
+function reviewedCount(diff: Diff): number {
+  return Object.keys(diff.reviewed).length;
+}
+
+function PinnedStrip({ items }: { items: DiffWithRepo[] }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        Pinned
+      </h2>
+      <div className="-mx-2 flex gap-4 overflow-x-auto px-2 pb-2">
+        {items.map((it) => (
+          <div key={`${it.repo.id}:${it.diff.id}`} className="shrink-0 basis-[360px]">
+            <DiffCard repo={it.repo} diff={it.diff} showRepoName />
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function InProgressBand({ items }: { items: DiffWithRepo[] }) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          In progress
+        </h2>
+        <span className="text-[11px] tabular text-muted-foreground/60">{items.length}</span>
+      </div>
+      <div className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
+        {items.map((it) => (
+          <DiffCard key={`${it.repo.id}:${it.diff.id}`} repo={it.repo} diff={it.diff} showRepoName />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function RepoSections({ repos }: { repos: Repo[] }) {
   return (
-    <div className="flex flex-col gap-14">
+    <div className="flex flex-col gap-12">
       {repos.map((repo) => (
         <RepoSection key={repo.id} repo={repo} />
       ))}
@@ -50,9 +125,10 @@ function RepoSections({ repos }: { repos: Repo[] }) {
 }
 
 function RepoSection({ repo }: { repo: Repo }) {
-  const { openNewDiff, confirm } = useDialogs();
+  const { confirm, openNewDiff } = useDialogs();
   const removeRepo = useRemoveRepo();
   const diffs = useDiffs(repo.id);
+  const openNewDiffForRepo = () => openNewDiff(repo.id);
 
   const onRemove = () => {
     confirm({
@@ -67,13 +143,22 @@ function RepoSection({ repo }: { repo: Repo }) {
     });
   };
 
-  const items = diffs.data ?? [];
+  // Per-repo grid is the surface for diffs that aren't pinned and haven't
+  // been touched yet. Pinned and In progress live in cross-repo bands above
+  // so the resume target isn't buried under a repo header.
+  const all = diffs.data ?? [];
+  const items = all
+    .filter((d) => d.pinned === null && reviewedCount(d) === 0)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  const hasOnlyBandedDiffs = all.length > 0 && items.length === 0;
 
   return (
     <section>
-      <div className="group/repo flex items-baseline justify-between gap-3 border-b border-border/60 pb-3">
+      <div className="group/repo flex items-baseline justify-between gap-3 pb-1">
         <div className="flex min-w-0 items-baseline gap-3">
-          <h2 className="truncate text-lg font-medium text-foreground">{repo.name}</h2>
+          <h2 className="truncate text-base font-semibold tracking-tight text-foreground">
+            {repo.name}
+          </h2>
           <span
             className="truncate font-mono text-xs text-muted-foreground/60 opacity-0 transition-opacity group-hover/repo:opacity-100"
             title={repo.path}
@@ -82,7 +167,7 @@ function RepoSection({ repo }: { repo: Repo }) {
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button size="sm" onClick={() => openNewDiff(repo.id)}>
+          <Button size="sm" onClick={openNewDiffForRepo}>
             <Plus />
             New diff
           </Button>
@@ -100,30 +185,43 @@ function RepoSection({ repo }: { repo: Repo }) {
       </div>
       <div className="mt-4">
         {items.length > 0 ? (
-          <DiffGrid repoId={repo.id} diffs={items} />
-        ) : diffs.isLoading ? null : (
-          <EmptyDiffs onCreate={() => openNewDiff(repo.id)} />
+          <DiffGrid repo={repo} diffs={items} />
+        ) : diffs.isLoading ? null : hasOnlyBandedDiffs ? null : (
+          <EmptyDiffs onCreate={openNewDiffForRepo} />
         )}
       </div>
     </section>
   );
 }
 
-function DiffGrid({ repoId, diffs }: { repoId: string; diffs: Diff[] }) {
+function DiffGrid({ repo, diffs }: { repo: Repo; diffs: Diff[] }) {
   return (
-    <div className="grid grid-cols-1 gap-5 md:grid-cols-2 2xl:grid-cols-3">
+    <div className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
       {diffs.map((diff) => (
-        <DiffCard key={diff.id} repoId={repoId} diff={diff} />
+        <DiffCard key={diff.id} repo={repo} diff={diff} />
       ))}
     </div>
   );
 }
 
-function DiffCard({ repoId, diff }: { repoId: string; diff: Diff }) {
+function DiffCard({
+  repo,
+  diff,
+  showRepoName = false,
+}: {
+  repo: Repo;
+  diff: Diff;
+  showRepoName?: boolean;
+}) {
   const deleteDiff = useDeleteDiff();
+  const setPin = useSetPin();
   const { confirm } = useDialogs();
-  const subtitle = diffTitle(diff.left, diff.right);
-  const reviewedCount = Object.keys(diff.reviewed).length;
+
+  const refLeft = labelForRef(diff.left);
+  const refRight = labelForRef(diff.right);
+  const reviewed = reviewedCount(diff);
+  const pinned = diff.pinned !== null;
+
   const onDelete = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -133,80 +231,148 @@ function DiffCard({ repoId, diff }: { repoId: string; diff: Diff }) {
       confirmLabel: "Delete",
       destructive: true,
       onConfirm: async () => {
-        await deleteDiff.mutateAsync({ repoId, diffId: diff.id });
+        await deleteDiff.mutateAsync({ repoId: repo.id, diffId: diff.id });
         notify("Diff deleted", diff.name);
       },
     });
   };
+
+  const onTogglePin = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setPin.mutate({ repoId: repo.id, diffId: diff.id, pinned: !pinned });
+  };
+
   return (
     <Link
       to="/repos/$repoId/diffs/$diffId"
-      params={{ repoId, diffId: diff.id }}
+      params={{ repoId: repo.id, diffId: diff.id }}
       className={cn(
-        "group relative flex min-h-[180px] flex-col rounded-2xl border border-border bg-card p-5 outline-none transition-all hover:border-foreground/30 hover:shadow-sm",
+        "group relative flex h-full flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-5 outline-none transition-colors hover:border-foreground/25",
         focusRing,
       )}
     >
+      {/* Row 1: worktree binding + actions. Always rendered so every
+          card reads consistently and the user can see at a glance which
+          checkout the diff is bound to. Main is neutral; non-main is
+          amber so attached worktrees pop. */}
       <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <h3 className="min-w-0 truncate text-base font-semibold leading-tight text-foreground">
-            {diff.name}
-          </h3>
-          {diff.pinned !== null ? (
-            <Pin
-              className="mt-1 size-3.5 shrink-0 text-amber-600 dark:text-amber-400"
-              aria-label="Pinned"
-            />
-          ) : null}
+        <WorktreeBindingRow path={diff.rightWorktreePath ?? null} />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onDelete}
+            className="opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+            title="Delete diff"
+          >
+            <Trash2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onTogglePin}
+            className={cn(
+              "transition-opacity focus-visible:opacity-100",
+              pinned
+                ? "text-foreground/80 opacity-100"
+                : "text-muted-foreground/70 opacity-0 group-hover:opacity-100",
+            )}
+            title={pinned ? "Unpin" : "Pin"}
+          >
+            <Pin className={pinned ? "fill-current" : ""} />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onDelete}
-          className="opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
-          title="Delete diff"
-        >
-          <Trash2 />
-        </Button>
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <span
-          className="inline-flex max-w-full items-center gap-1 truncate rounded-md border border-border/60 bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground/90"
-          title={subtitle}
-        >
-          {subtitle}
-        </span>
-        {diff.rightWorktreePath ? (
-          <span
-            className="inline-flex max-w-full items-center gap-1 truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 font-mono text-[10px] text-amber-700 dark:text-amber-300"
-            title={diff.rightWorktreePath}
-          >
-            in {tildify(diff.rightWorktreePath)}
-          </span>
-        ) : null}
-      </div>
+      {/* Diff name */}
+      <h3 className="min-w-0 truncate text-base font-semibold leading-tight text-foreground">
+        {diff.name}
+      </h3>
+
+      {/* Ref pair */}
+      <RefPairChip left={refLeft} right={refRight} />
 
       <div className="flex-1" />
 
-      <div className="tabular mt-5 flex items-center justify-between gap-3 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-        <span>{formatRelativeTime(diff.updatedAt)}</span>
-        {reviewedCount > 0 ? (
-          <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-            <Check className="size-3" />
-            {reviewedCount} reviewed
-          </span>
-        ) : (
-          <span className="text-muted-foreground/50">Not started</span>
-        )}
+      {/* Footer: meta left, status right */}
+      <div className="tabular flex items-center justify-between gap-3 text-xs text-muted-foreground">
+        <span className="truncate">
+          {showRepoName ? repo.name : formatRelativeTime(diff.createdAt)}
+        </span>
+        <ProgressLabel reviewed={reviewed} />
       </div>
+
+      {/* Progress bar */}
+      <ProgressBar reviewed={reviewed} />
     </Link>
+  );
+}
+
+function WorktreeBindingRow({ path }: { path: string | null }) {
+  // Main = neutral, no extra emphasis. Non-main = amber, because that's
+  // the case where the diff is anchored somewhere besides the obvious
+  // checkout and the user benefits from a visual cue.
+  if (path === null) {
+    return (
+      <span
+        className="inline-flex min-w-0 items-center gap-1.5 self-start truncate rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground"
+        title="Bound to the main worktree. PReview reads its current state; opening doesn't change your checkout."
+      >
+        <FolderGit2 className="size-3 shrink-0" aria-hidden />
+        <span className="font-medium">main</span>
+      </span>
+    );
+  }
+  const last = path.split("/").filter(Boolean).pop() ?? path;
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1.5 self-start truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300"
+      title={`Bound to the ${last} worktree at ${path}. PReview reads its current state; opening doesn't change your checkout.`}
+    >
+      <FolderGit2 className="size-3 shrink-0" aria-hidden />
+      <span className="font-medium">{last}</span>
+    </span>
+  );
+}
+
+function RefPairChip({ left, right }: { left: string; right: string }) {
+  const title = diffTitle({ kind: "branch", name: left }, { kind: "branch", name: right });
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1 self-start truncate rounded-md border border-border/60 bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground/90"
+      title={title}
+    >
+      {left} <span className="text-muted-foreground/50">↔</span> {right}
+    </span>
+  );
+}
+
+function ProgressLabel({ reviewed }: { reviewed: number }) {
+  if (reviewed === 0) return <span className="text-muted-foreground/50">Not started</span>;
+  // No denominator persisted at the dashboard level; show the absolute count.
+  // The user gets the X/Y view inside the DiffView header.
+  return (
+    <span className="text-emerald-600 dark:text-emerald-400">
+      {reviewed} reviewed
+    </span>
+  );
+}
+
+function ProgressBar({ reviewed }: { reviewed: number }) {
+  // Hairline track for not-started so cards still have a bottom edge;
+  // emerald accent fill once anything is reviewed. Width is intentionally
+  // not a percentage because the denominator (total files) isn't known
+  // at the dashboard level; the bar's presence is the signal.
+  if (reviewed === 0) return <div className="-mx-5 -mb-5 h-[2px] bg-border/60" />;
+  return (
+    <div className="-mx-5 -mb-5 h-[3px] bg-emerald-500/80 dark:bg-emerald-400/70" />
   );
 }
 
 function EmptyDiffs({ onCreate }: { onCreate: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-dashed border-border/60 bg-card/20 px-5 py-4 text-sm text-muted-foreground">
+    <div className="flex items-center justify-between gap-4 rounded-2xl border border-dashed border-border/50 px-5 py-4 text-sm text-muted-foreground">
       <div className="flex items-center gap-3">
         <GitBranch className="size-4 text-muted-foreground/60" />
         <span>No diffs yet.</span>

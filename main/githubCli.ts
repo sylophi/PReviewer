@@ -98,6 +98,11 @@ export async function listPullRequests(cwd: string): Promise<PullRequest[]> {
 
 export const PullRequestViewSchema = PullRequestSchema.extend({
   headRefOid: z.string(),
+  baseRefOid: z.string(),
+  // Present when state === "MERGED". Used to pick the correct three-dot
+  // base (merge commit's first parent) so the diff still reads as "what
+  // the PR changed" after the PR has landed.
+  mergeCommit: z.object({ oid: z.string() }).nullable().optional(),
 });
 export type PullRequestView = z.infer<typeof PullRequestViewSchema>;
 
@@ -110,7 +115,7 @@ export async function viewPullRequest(cwd: string, number: number): Promise<Pull
       "view",
       String(number),
       "--json",
-      "number,title,state,isDraft,url,headRefName,baseRefName,headRefOid",
+      "number,title,state,isDraft,url,headRefName,baseRefName,headRefOid,baseRefOid,mergeCommit",
     ],
     { cwd, timeout: 10_000 },
   );

@@ -101,4 +101,21 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+
+  /*
+   * Token overrides for surfaces that sit on top of the BrowserWindow's
+   * NSVisualEffectView material (the titlebar, sidebars, etc.). The
+   * global muted/accent shades are tuned for an opaque card surface and
+   * read as washed-out icons + sticker-like selection on top of the
+   * vibrancy-blurred material. These tokens push them back to legible
+   * values without disturbing the rest of the app.
+   */
+  [data-sidebar] {
+    --muted-foreground: var(--color-neutral-600);
+    --accent: oklch(0 0 0 / 0.06);
+  }
+  .dark [data-sidebar] {
+    --muted-foreground: var(--color-neutral-300);
+    --accent: oklch(1 0 0 / 0.1);
+  }
 }

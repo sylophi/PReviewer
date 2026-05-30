@@ -1,5 +1,11 @@
-import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Diff, RefExpr, ResolvedDiff } from "@shared/schemas";
+import {
+  type QueryClient,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import type { Diff, RefExpr, Repo, ResolvedDiff } from "@shared/schemas";
 
 const diffsKey = (repoId: string) => ["diffs", repoId] as const;
 const diffKey = (repoId: string, diffId: string) => ["diff", repoId, diffId] as const;
@@ -11,6 +17,32 @@ export function useDiffs(repoId: string) {
     queryKey: diffsKey(repoId),
     queryFn: () => window.api.diffs.list(repoId),
   });
+}
+
+export interface DiffWithRepo {
+  diff: Diff;
+  repo: Repo;
+}
+
+// Aggregates diffs across all repos for cross-repo dashboard bands
+// (Pinned strip, In progress band). Shares the per-repo cache with
+// useDiffs so opening a repo section doesn't refetch.
+export function useAllDiffs(repos: Repo[]) {
+  const queries = useQueries({
+    queries: repos.map((repo) => ({
+      queryKey: diffsKey(repo.id),
+      queryFn: () => window.api.diffs.list(repo.id),
+    })),
+  });
+  const items: DiffWithRepo[] = [];
+  queries.forEach((q, idx) => {
+    const repo = repos[idx];
+    if (!repo) return;
+    for (const diff of q.data ?? []) {
+      items.push({ diff, repo });
+    }
+  });
+  return { items, isLoading: queries.some((q) => q.isLoading) };
 }
 
 export function useDiff(repoId: string, diffId: string) {
@@ -50,6 +82,7 @@ interface CreateDiffArgs {
   name?: string;
   left: RefExpr;
   right: RefExpr;
+  rightWorktreePath?: string;
 }
 
 export function useCreateDiff() {

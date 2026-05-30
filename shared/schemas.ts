@@ -266,4 +266,10 @@ export const ListPullRequestsPayloadSchema = z.object({
 export const CreateDiffFromPrPayloadSchema = z.object({
   repoId: z.string().min(1),
   number: z.number().int().positive(),
+  // Worktree the diff binds to on disk. Same semantics as
+  // CreateDiffPayload.rightWorktreePath: omit for the main worktree,
+  // set the absolute path for a non-main checkout. PR head SHAs are
+  // global so this doesn't change the resolved diff; it only changes
+  // where git commands run and which checkout edits would land in.
+  rightWorktreePath: z.string().min(1).optional(),
 });

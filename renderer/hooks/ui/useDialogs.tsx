@@ -3,7 +3,6 @@ import { NewDiffDialog } from "@/components/NewDiffDialog";
 import { AddProjectView } from "@/components/palette/AddProjectView";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
-import { useRepos } from "@/hooks/repos/useRepos";
 import { notifyError } from "@/lib/toast";
 
 interface ConfirmRequest {
@@ -16,7 +15,7 @@ interface ConfirmRequest {
 
 interface DialogsContextValue {
   openAddRepo: () => void;
-  openNewDiff: (repoId?: string) => void;
+  openNewDiff: (repoId: string) => void;
   confirm: (req: ConfirmRequest) => void;
 }
 
@@ -24,17 +23,16 @@ const DialogsContext = createContext<DialogsContextValue | null>(null);
 
 type DialogState =
   | { kind: "addRepo" }
-  | { kind: "newDiff"; repoId?: string }
+  | { kind: "newDiff"; repoId: string }
   | { kind: "confirm"; req: ConfirmRequest };
 
 export function DialogsProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<DialogState | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
-  const repos = useRepos().data ?? [];
 
   const openAddRepo = useCallback(() => setActive({ kind: "addRepo" }), []);
-  const openNewDiff = useCallback((repoId?: string) => {
-    setActive({ kind: "newDiff", ...(repoId ? { repoId } : {}) });
+  const openNewDiff = useCallback((repoId: string) => {
+    setActive({ kind: "newDiff", repoId });
   }, []);
   const confirm = useCallback((req: ConfirmRequest) => {
     setActive({ kind: "confirm", req });
@@ -72,11 +70,7 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
         </ModalShell>
       ) : null}
       {active?.kind === "newDiff" ? (
-        <NewDiffDialog
-          repos={repos}
-          {...(active.repoId ? { initialRepoId: active.repoId } : {})}
-          onClose={close}
-        />
+        <NewDiffDialog initialRepoId={active.repoId} onClose={close} />
       ) : null}
       {active?.kind === "confirm" ? (
         <ConfirmDialog

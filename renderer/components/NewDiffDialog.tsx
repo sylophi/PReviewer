@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import type { RecentCommit, RefExpr, Repo } from "@shared/schemas";
+import type { RecentCommit, RefExpr, Worktree } from "@shared/schemas";
 import { useCreateDiff } from "@/hooks/diffs/useDiffs";
+import { useRepos } from "@/hooks/repos/useRepos";
 import { useRepoBranches } from "@/hooks/repos/useRepoBranches";
 import { useRecentCommits } from "@/hooks/repos/useRecentCommits";
 import { useWorktrees } from "@/hooks/repos/useWorktrees";
@@ -12,24 +13,19 @@ import {
 } from "@/hooks/gh/usePullRequests";
 import { ModalShell } from "@/components/ui/modal-shell";
 import { Badge } from "./ui/badge";
+import { BranchCombobox } from "./ui/branch-combobox";
 import { Button } from "./ui/button";
-import { Field, Input, Select } from "./ui/form-controls";
+import { Field, Input } from "./ui/form-controls";
 import { Segmented } from "./ui/segmented";
 import { Skeleton } from "./ui/skeleton";
+import { WorktreeCombobox } from "./ui/worktree-combobox";
 import { diffTitle } from "@/lib/refExpr";
 import { tildify } from "@/lib/projectPaths";
+import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";
-
-interface NewDiffDialogProps {
-  repos: Repo[];
-  initialRepoId?: string;
-  onClose: () => void;
-}
 
 type Source = "refs" | "pullRequest";
 
-// Form-side mirror of RefExpr. Empty strings stand in for unfilled fields
-// so the SidePicker is uncontrolled-friendly.
 type LeafKind = "branch" | "commit" | "head" | "workingTree";
 type FormLeaf =
   | { kind: "branch"; name: string }
@@ -63,19 +59,32 @@ function formToRef(form: FormRef): RefExpr | null {
   return formLeafToRef(form);
 }
 
-export function NewDiffDialog({ repos, initialRepoId, onClose }: NewDiffDialogProps) {
-  const [repoId, setRepoId] = useState<string>(initialRepoId ?? repos[0]?.id ?? "");
+export function NewDiffDialog({
+  initialRepoId,
+  onClose,
+}: {
+  initialRepoId: string;
+  onClose: () => void;
+}) {
+  const repo = (useRepos().data ?? []).find((r) => r.id === initialRepoId) ?? null;
   const [source, setSource] = useState<Source>("refs");
 
   return (
-    <ModalShell onClose={onClose} popoverClassName="max-w-lg">
-      <div className="flex flex-col gap-4 p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-base font-medium">New diff</h2>
+    <ModalShell onClose={onClose} popoverClassName="w-[95vw] max-w-[1200px] h-[82vh]">
+      <div className="flex h-full flex-col">
+        {/* Title row */}
+        <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border/60 px-7 py-4">
+          <div className="flex min-w-0 items-baseline gap-3">
+            <h2 className="text-lg font-semibold tracking-tight text-foreground">New diff</h2>
+            <span className="truncate text-sm text-muted-foreground">
+              in <span className="font-medium text-foreground">{repo?.name ?? initialRepoId}</span>
+            </span>
+          </div>
           <Segmented
             label="Diff source"
             value={source}
             onChange={setSource}
+            size="md"
             options={[
               { value: "refs", label: "Refs" },
               { value: "pullRequest", label: "Pull request" },
@@ -83,30 +92,24 @@ export function NewDiffDialog({ repos, initialRepoId, onClose }: NewDiffDialogPr
           />
         </div>
 
-        {repos.length > 1 ? (
-          <Field label="Repo">
-            <Select value={repoId} onChange={(e) => setRepoId(e.target.value)}>
-              {repos.map((repo) => (
-                <option key={repo.id} value={repo.id}>
-                  {repo.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        ) : null}
-
-        {source === "refs" ? (
-          <RefsMode repoId={repoId} onClose={onClose} />
-        ) : (
-          <PullRequestMode repoId={repoId} onClose={onClose} />
-        )}
+        {/* Body: flex column that splits scroll area from the submit bar */}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {source === "refs" ? (
+            <RefsMode repoId={initialRepoId} onClose={onClose} />
+          ) : (
+            <PullRequestMode repoId={initialRepoId} onClose={onClose} />
+          )}
+        </div>
       </div>
     </ModalShell>
   );
 }
 
 function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) {
-  const branches = useRepoBranches(repoId || null);
+  // Eager-fetch the branch list so BranchCombobox is warm when the user
+  // opens it. The combobox calls the same hook internally; React Query
+  // dedupes.
+  useRepoBranches(repoId || null);
   const recentCommits = useRecentCommits(repoId || null);
   const worktrees = useWorktrees(repoId || null);
   const [worktreePath, setWorktreePath] = useState<string>("");
@@ -114,15 +117,12 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
   const [right, setRight] = useState<FormRef>(emptyLeaf);
   const [name, setName] = useState<string>("");
 
-  // Repo change: clear everything so the next set of seeding effects can
-  // fire against fresh worktree / branch data.
   useEffect(() => {
     setWorktreePath("");
     setLeft(emptyLeaf);
     setRight(emptyLeaf);
   }, [repoId]);
 
-  // Default to the main worktree as soon as the list resolves.
   useEffect(() => {
     if (!worktrees.data || worktreePath !== "") return;
     const main = worktrees.data.find((w) => w.isMain) ?? worktrees.data[0];
@@ -134,9 +134,6 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
     [worktrees.data, worktreePath],
   );
 
-  // Seeding: left defaults to the chosen worktree's current branch (so
-  // the diff reads as "uncommitted changes here" by default), right
-  // defaults to the live working tree of that worktree.
   useEffect(() => {
     if (!selectedWorktree) return;
     setLeft((prev) => {
@@ -159,8 +156,6 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
   const submit = async () => {
     if (!repoId || !leftRef || !rightRef) return;
     const trimmedName = name.trim();
-    // Only carry rightWorktreePath when it's a non-main worktree, so
-    // single-worktree repos stay clean in the persisted JSON.
     const carryWorktree = selectedWorktree && !selectedWorktree.isMain;
     const created = await create.mutateAsync({
       repoId,
@@ -171,69 +166,80 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
         ? { rightWorktreePath: selectedWorktree.path }
         : {}),
     });
-    onClose();
     notify("Diff created", created.name);
+    onClose();
     void navigate({
       to: "/repos/$repoId/diffs/$diffId",
       params: { repoId: created.repoId, diffId: created.id },
     });
   };
 
+  const onPickWorktree = (path: string) => {
+    setWorktreePath(path);
+    // Clearing left/right lets the seeding effect re-fill them from the
+    // newly-chosen worktree's currentBranch / workingTree.
+    setLeft(emptyLeaf);
+    setRight(emptyLeaf);
+  };
+
   const canSubmit = repoId !== "" && leftRef !== null && rightRef !== null;
   const previewName = name.trim() || (leftRef && rightRef ? diffTitle(leftRef, rightRef) : "");
-  const localBranches = branches.data?.local ?? [];
   const recents = recentCommits.data ?? [];
   const worktreeList = worktrees.data ?? [];
-  const hasMultipleWorktrees = worktreeList.length > 1;
 
   return (
     <>
-      {hasMultipleWorktrees ? (
-        <Field label="Worktree">
-          <Select
-            value={worktreePath}
-            onChange={(e) => {
-              setWorktreePath(e.target.value);
-              // User switched worktree; clear left/right so seeding
-              // picks the new worktree's currentBranch.
-              setLeft(emptyLeaf);
-              setRight(emptyLeaf);
-            }}
-          >
-            {worktreeList.map((wt) => (
-              <option key={wt.path} value={wt.path}>
-                {worktreeLabel(wt)}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      ) : null}
+      {/* Scrolling form area */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-7 py-6">
+        <div className="flex flex-col gap-7">
+          {/* The two endpoints sit side by side. Reviewing leads on the
+              left because it is the side the user is actually examining;
+              Compared against is the baseline reference. */}
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
+            <SectionBlock title="Compared against" subhead="the left side, the baseline">
+              <ComparedAgainstPicker
+                repoId={repoId}
+                value={left}
+                onChange={setLeft}
+                worktree={selectedWorktree}
+                recentCommits={recents}
+              />
+            </SectionBlock>
+            <SectionBlock title="Reviewing" subhead="the right side, what you examine">
+              <WorktreeCombobox
+                worktrees={worktreeList}
+                selectedPath={worktreePath}
+                onChange={onPickWorktree}
+              />
+              <ReviewingPicker
+                repoId={repoId}
+                value={right}
+                onChange={setRight}
+                worktree={selectedWorktree}
+                recentCommits={recents}
+              />
+              <p className="text-xs leading-relaxed text-muted-foreground/80">
+                PReview reads the worktree as it is right now. It never runs git checkout, so
+                opening this diff later won't disturb whatever you have checked out.
+              </p>
+            </SectionBlock>
+          </div>
 
-      <SidePicker
-        label="Left"
-        value={left}
-        onChange={setLeft}
-        branches={localBranches}
-        recentCommits={recents}
-      />
-      <SidePicker
-        label="Right"
-        value={right}
-        onChange={setRight}
-        branches={localBranches}
-        recentCommits={recents}
-      />
+          <Field label="Name (optional)">
+            <Input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={previewName || "auto"}
+            />
+          </Field>
+        </div>
+      </div>
 
-      <Field label="Name (optional)">
-        <Input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={previewName || "auto"}
-        />
-      </Field>
-
-      <div className="mt-2 flex items-center justify-end gap-2">
+      {/* Submit bar pinned to modal bottom. Stays visible regardless of
+          the form's natural height so the modal reads as a real dialog
+          with a primary action at the bottom-right. */}
+      <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border/60 bg-popover px-7 py-4">
         <Button variant="ghost" onClick={onClose}>
           Cancel
         </Button>
@@ -249,24 +255,236 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
   );
 }
 
-function worktreeLabel(wt: {
-  path: string;
-  branch: string | null;
-  detached: boolean;
-  head: string;
-  isMain: boolean;
-}): string {
-  const state = wt.detached ? `(detached @ ${wt.head.slice(0, 7)})` : (wt.branch ?? "(unknown)");
-  const tag = wt.isMain ? " · main" : "";
-  return `${state} · ${tildify(wt.path)}${tag}`;
+function SectionBlock({
+  title,
+  subhead,
+  children,
+}: {
+  title: string;
+  subhead: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-col gap-0.5">
+        <h2 className="text-base font-semibold tracking-tight text-foreground">{title}</h2>
+        <span className="text-sm text-muted-foreground/80">{subhead}</span>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function worktreeName(wt: Worktree): string {
+  const last = wt.path.split("/").filter(Boolean).pop();
+  return last ?? wt.path;
+}
+
+function ReviewingPicker({
+  repoId,
+  value,
+  onChange,
+  worktree,
+  recentCommits,
+}: {
+  repoId: string;
+  value: FormRef;
+  onChange: (next: FormRef) => void;
+  worktree: Worktree | null;
+  recentCommits: RecentCommit[];
+}) {
+  // The right side cannot be a merge base.
+  const leaf: FormLeaf = value.kind === "mergeBase" ? emptyLeaf : value;
+  return (
+    <div className="flex flex-col gap-2">
+      <Segmented
+        label="Reviewing kind"
+        value={leaf.kind}
+        onChange={(next) => onChange(leafFromKind(next))}
+        size="md"
+        options={[
+          { value: "workingTree", label: "Working tree" },
+          { value: "head", label: "HEAD" },
+          { value: "branch", label: "Branch" },
+          { value: "commit", label: "Commit" },
+        ]}
+      />
+      <ValueRow>
+        {leaf.kind === "workingTree" ? (
+          worktree ? (
+            <ResolvedHint>
+              Working tree of <Mono>{tildify(worktree.path)}</Mono>
+              {worktree.branch ? (
+                <>
+                  , currently on <Mono>{worktree.branch}</Mono>
+                </>
+              ) : null}
+            </ResolvedHint>
+          ) : (
+            <ResolvedHint muted>Pick a worktree above.</ResolvedHint>
+          )
+        ) : leaf.kind === "head" ? (
+          worktree ? (
+            <ResolvedHint>
+              HEAD of <Mono>{worktree.branch ?? `${worktree.head.slice(0, 7)} (detached)`}</Mono>{" "}
+              <span className="text-muted-foreground/60">in {worktreeName(worktree)}</span>
+            </ResolvedHint>
+          ) : (
+            <ResolvedHint muted>Pick a worktree above.</ResolvedHint>
+          )
+        ) : leaf.kind === "branch" ? (
+          <BranchCombobox
+            repoId={repoId}
+            value={leaf.name}
+            onChange={(name) => onChange({ kind: "branch", name })}
+          />
+        ) : (
+          <CommitPicker
+            value={leaf.hash}
+            onChange={(hash) => onChange({ kind: "commit", hash })}
+            recentCommits={recentCommits}
+          />
+        )}
+      </ValueRow>
+    </div>
+  );
+}
+
+type ComparedKind = "branch" | "commit" | "head";
+
+function ComparedAgainstPicker({
+  repoId,
+  value,
+  onChange,
+  worktree,
+  recentCommits,
+}: {
+  repoId: string;
+  value: FormRef;
+  onChange: (next: FormRef) => void;
+  worktree: Worktree | null;
+  recentCommits: RecentCommit[];
+}) {
+  if (value.kind === "mergeBase") {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
+            Merge base of
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange(emptyLeaf)}
+            className={cn(
+              "text-xs text-muted-foreground transition-colors hover:text-foreground",
+              focusRing,
+            )}
+          >
+            Cancel merge base
+          </button>
+        </div>
+        <LeafPicker
+          repoId={repoId}
+          value={value.a}
+          onChange={(a) => onChange({ kind: "mergeBase", a, b: value.b })}
+          recentCommits={recentCommits}
+        />
+        <LeafPicker
+          repoId={repoId}
+          value={value.b}
+          onChange={(b) => onChange({ kind: "mergeBase", a: value.a, b })}
+          recentCommits={recentCommits}
+        />
+      </div>
+    );
+  }
+
+  const kind: ComparedKind = value.kind === "workingTree" ? "branch" : value.kind;
+  return (
+    <div className="flex flex-col gap-2">
+      <Segmented
+        label="Compared against kind"
+        value={kind}
+        onChange={(next) => onChange(leafFromKind(next))}
+        size="md"
+        options={[
+          { value: "branch", label: "Branch" },
+          { value: "commit", label: "Commit" },
+          { value: "head", label: "HEAD" },
+        ]}
+      />
+      <ValueRow>
+        {kind === "branch" ? (
+          <BranchCombobox
+            repoId={repoId}
+            value={value.kind === "branch" ? value.name : ""}
+            onChange={(name) => onChange({ kind: "branch", name })}
+          />
+        ) : kind === "commit" ? (
+          <CommitPicker
+            value={value.kind === "commit" ? value.hash : ""}
+            onChange={(hash) => onChange({ kind: "commit", hash })}
+            recentCommits={recentCommits}
+          />
+        ) : worktree ? (
+          <ResolvedHint>
+            HEAD of <Mono>{worktree.branch ?? `${worktree.head.slice(0, 7)} (detached)`}</Mono>{" "}
+            <span className="text-muted-foreground/60">in {worktreeName(worktree)}</span>
+          </ResolvedHint>
+        ) : (
+          <ResolvedHint muted>Pick a worktree on the left.</ResolvedHint>
+        )}
+      </ValueRow>
+      <button
+        type="button"
+        onClick={() => onChange({ kind: "mergeBase", a: emptyLeaf, b: emptyLeaf })}
+        className={cn(
+          "self-start text-xs text-muted-foreground transition-colors hover:text-foreground",
+          focusRing,
+        )}
+      >
+        Compare against merge base…
+      </button>
+    </div>
+  );
+}
+
+function ValueRow({ children }: { children: React.ReactNode }) {
+  return <div className="flex min-h-[36px] items-center gap-2">{children}</div>;
+}
+
+function ResolvedHint({
+  children,
+  muted = false,
+}: {
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <div className={cn("text-sm", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>
+      {children}
+    </div>
+  );
+}
+
+function Mono({ children }: { children: React.ReactNode }) {
+  return <span className="font-mono text-foreground">{children}</span>;
 }
 
 function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => void }) {
   const readiness = useGhReadiness();
   const prs = usePullRequests(repoId || null);
+  const worktrees = useWorktrees(repoId || null);
   const create = useCreateDiffFromPullRequest();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
+  const [worktreePath, setWorktreePath] = useState<string>("");
+
+  useEffect(() => {
+    if (!worktrees.data || worktreePath !== "") return;
+    const main = worktrees.data.find((w) => w.isMain) ?? worktrees.data[0];
+    if (main) setWorktreePath(main.path);
+  }, [worktrees.data, worktreePath]);
 
   const filtered = useMemo(() => {
     const all = prs.data ?? [];
@@ -280,13 +498,23 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
     );
   }, [prs.data, filter]);
 
+  const selectedWorktree = (worktrees.data ?? []).find((w) => w.path === worktreePath) ?? null;
+  const worktreeList = worktrees.data ?? [];
+
   const onPick = (number: number) => {
+    const carryWorktree = selectedWorktree && !selectedWorktree.isMain;
     create.mutate(
-      { repoId, number },
+      {
+        repoId,
+        number,
+        ...(carryWorktree && selectedWorktree
+          ? { rightWorktreePath: selectedWorktree.path }
+          : {}),
+      },
       {
         onSuccess: (diff) => {
-          onClose();
           notify("Diff created", diff.name);
+          onClose();
           void navigate({
             to: "/repos/$repoId/diffs/$diffId",
             params: { repoId: diff.repoId, diffId: diff.id },
@@ -297,7 +525,7 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
   };
 
   return (
-    <>
+    <div className="flex h-full min-h-0 flex-col gap-4 px-7 py-6">
       {readiness.data && !readiness.data.installed ? (
         <GhNotice>
           GitHub CLI (<code className="font-mono">gh</code>) isn't installed. Install with{" "}
@@ -310,16 +538,33 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
         </GhNotice>
       ) : null}
 
-      <Field label="Filter">
-        <Input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Title, number, or branch"
-        />
-      </Field>
+      {worktreeList.length > 0 ? (
+        <div className="flex shrink-0 flex-col gap-1.5">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground/80">
+            Read from
+          </span>
+          <WorktreeCombobox
+            worktrees={worktreeList}
+            selectedPath={worktreePath}
+            onChange={setWorktreePath}
+          />
+          <p className="text-xs leading-relaxed text-muted-foreground/70">
+            PR contents are the same regardless of which worktree you pick. This only chooses
+            where git commands run, and where edits would land if you later check the PR branch
+            out yourself. PReview never checks anything out for you.
+          </p>
+        </div>
+      ) : null}
 
-      <div className="max-h-72 overflow-auto rounded-lg border border-border bg-card/30">
+      <Input
+        type="text"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Title, number, or branch"
+        className="shrink-0"
+      />
+
+      <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-border bg-card/30">
         {prs.isLoading ? (
           <ul className="divide-y divide-border">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -352,9 +597,11 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
                     {pr.isDraft ? "Draft" : pr.state.toLowerCase()}
                   </Badge>
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">
-                      <span className="tabular text-muted-foreground">#{pr.number}</span>{" "}
-                      <span className="text-muted-foreground/60">·</span> {pr.title}
+                    <div className="flex min-w-0 items-baseline gap-2 text-sm">
+                      <span className="tabular shrink-0 text-muted-foreground">
+                        #{pr.number}
+                      </span>
+                      <span className="truncate font-medium">{pr.title}</span>
                     </div>
                     <div className="truncate font-mono text-xs text-muted-foreground">
                       {pr.headRefName} → {pr.baseRefName}
@@ -366,145 +613,51 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
           </ul>
         )}
       </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>
-          Cancel
-        </Button>
-      </div>
-    </>
-  );
-}
-
-interface SidePickerProps {
-  label: string;
-  value: FormRef;
-  onChange: (next: FormRef) => void;
-  branches: string[];
-  recentCommits: RecentCommit[];
-}
-
-function SidePicker({ label, value, onChange, branches, recentCommits }: SidePickerProps) {
-  const onKindChange = (next: FormRef["kind"]) => {
-    if (next === "mergeBase") {
-      onChange({ kind: "mergeBase", a: emptyLeaf, b: emptyLeaf });
-    } else {
-      onChange(leafFromKind(next));
-    }
-  };
-  return (
-    <Field label={label}>
-      <div className="flex flex-col gap-2">
-        <div className="flex gap-2">
-          <Select
-            value={value.kind}
-            onChange={(e) => onKindChange(e.target.value as FormRef["kind"])}
-            className="w-32 shrink-0"
-          >
-            <option value="branch">Branch</option>
-            <option value="commit">Commit</option>
-            <option value="head">HEAD</option>
-            <option value="workingTree">Working tree</option>
-            <option value="mergeBase">Merge base</option>
-          </Select>
-          {value.kind === "branch" ? (
-            <BranchSelect
-              value={value.name}
-              onChange={(name) => onChange({ kind: "branch", name })}
-              branches={branches}
-            />
-          ) : value.kind === "commit" ? (
-            <CommitPicker
-              value={value.hash}
-              onChange={(hash) => onChange({ kind: "commit", hash })}
-              recentCommits={recentCommits}
-            />
-          ) : null}
-        </div>
-        {value.kind === "mergeBase" ? (
-          <div className="flex flex-col gap-2 rounded-md border border-border bg-card/30 p-2">
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground/80">
-              Merge base of
-            </div>
-            <LeafPicker
-              value={value.a}
-              onChange={(a) => onChange({ kind: "mergeBase", a, b: value.b })}
-              branches={branches}
-              recentCommits={recentCommits}
-            />
-            <LeafPicker
-              value={value.b}
-              onChange={(b) => onChange({ kind: "mergeBase", a: value.a, b })}
-              branches={branches}
-              recentCommits={recentCommits}
-            />
-          </div>
-        ) : null}
-      </div>
-    </Field>
-  );
-}
-
-function LeafPicker({
-  value,
-  onChange,
-  branches,
-  recentCommits,
-}: {
-  value: FormLeaf;
-  onChange: (next: FormLeaf) => void;
-  branches: string[];
-  recentCommits: RecentCommit[];
-}) {
-  return (
-    <div className="flex gap-2">
-      <Select
-        value={value.kind}
-        onChange={(e) => onChange(leafFromKind(e.target.value as LeafKind))}
-        className="w-32 shrink-0"
-      >
-        <option value="branch">Branch</option>
-        <option value="commit">Commit</option>
-        <option value="head">HEAD</option>
-        <option value="workingTree">Working tree</option>
-      </Select>
-      {value.kind === "branch" ? (
-        <BranchSelect
-          value={value.name}
-          onChange={(name) => onChange({ kind: "branch", name })}
-          branches={branches}
-        />
-      ) : value.kind === "commit" ? (
-        <CommitPicker
-          value={value.hash}
-          onChange={(hash) => onChange({ kind: "commit", hash })}
-          recentCommits={recentCommits}
-        />
-      ) : null}
     </div>
   );
 }
 
-function BranchSelect({
+function LeafPicker({
+  repoId,
   value,
   onChange,
-  branches,
+  recentCommits,
 }: {
-  value: string;
-  onChange: (next: string) => void;
-  branches: string[];
+  repoId: string;
+  value: FormLeaf;
+  onChange: (next: FormLeaf) => void;
+  recentCommits: RecentCommit[];
 }) {
   return (
-    <Select value={value} onChange={(e) => onChange(e.target.value)} className="flex-1">
-      <option value="" disabled>
-        Pick a branch…
-      </option>
-      {branches.map((b) => (
-        <option key={b} value={b}>
-          {b}
-        </option>
-      ))}
-    </Select>
+    <div className="flex gap-2">
+      <Segmented
+        label="Kind"
+        value={value.kind}
+        onChange={(next) => onChange(leafFromKind(next as LeafKind))}
+        size="md"
+        options={[
+          { value: "branch", label: "Branch" },
+          { value: "commit", label: "Commit" },
+          { value: "head", label: "HEAD" },
+          { value: "workingTree", label: "WT" },
+        ]}
+      />
+      <div className="min-w-0 flex-1">
+        {value.kind === "branch" ? (
+          <BranchCombobox
+            repoId={repoId}
+            value={value.name}
+            onChange={(name) => onChange({ kind: "branch", name })}
+          />
+        ) : value.kind === "commit" ? (
+          <CommitPicker
+            value={value.hash}
+            onChange={(hash) => onChange({ kind: "commit", hash })}
+            recentCommits={recentCommits}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -518,7 +671,7 @@ function CommitPicker({
   recentCommits: RecentCommit[];
 }) {
   return (
-    <div className="flex flex-1 flex-col gap-1">
+    <div className="flex min-w-0 flex-col gap-1">
       <Input
         type="text"
         value={value}
@@ -527,20 +680,23 @@ function CommitPicker({
         className="font-mono"
       />
       {recentCommits.length > 0 ? (
-        <Select
+        <select
           value=""
           onChange={(e) => {
             if (e.target.value) onChange(e.target.value);
           }}
-          className="h-7 text-xs"
+          className={cn(
+            "flex h-7 w-full min-w-0 rounded-md border border-input bg-background px-2 py-0.5 text-xs outline-none focus-visible:border-ring",
+            focusRing,
+          )}
         >
           <option value="">Recent commits…</option>
           {recentCommits.map((c) => (
             <option key={c.hash} value={c.hash}>
-              {c.shortHash} · {c.subject}
+              {c.shortHash}  {c.subject}
             </option>
           ))}
-        </Select>
+        </select>
       ) : null}
     </div>
   );

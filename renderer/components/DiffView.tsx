@@ -1,39 +1,78 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "@tanstack/react-router";
-import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
-import { ArrowLeft, Check, FileText, Pin, PinOff, RefreshCcw, X } from "lucide-react";
-import type { FileChange } from "@shared/schemas";
+import { DiffEditor, Editor, type DiffOnMount, type OnMount } from "@monaco-editor/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  FileText,
+  FolderGit2,
+  Pin,
+  RefreshCcw,
+  X,
+} from "lucide-react";
+import type { Diff, FileChange, Worktree } from "@shared/schemas";
 import { useResolvedDiff, useSetPin, useSetReviewed } from "@/hooks/diffs/useDiffs";
+import { useFullFileTree } from "@/hooks/diffs/useFullFileTree";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
 import { useWriteFile } from "@/hooks/diffs/useWriteFile";
-import { useRepos } from "@/hooks/repos/useRepos";
+import { useWorktrees } from "@/hooks/repos/useWorktrees";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
-import { tildify } from "@/lib/projectPaths";
 import { diffTitle, labelForRef } from "@/lib/refExpr";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
+import {
+  PIERRE_FONT_FAMILY,
+  PIERRE_FONT_SIZE,
+  PIERRE_LINE_HEIGHT,
+} from "@/monaco-setup";
+import { AppToolbar, ThemeToggle, ToolbarActions } from "./AppToolbar";
 import { Badge } from "./ui/badge";
 import { Button, buttonVariants } from "./ui/button";
+import { MaterialIcon } from "./ui/material-icon";
 import { Segmented } from "./ui/segmented";
 import { Skeleton } from "./ui/skeleton";
 
 type DiffStyle = "split" | "inline";
+type TreeMode = "changed" | "full";
 
 interface Tab {
   path: string;
   // Preview tabs get replaced when another file is opened as preview.
   preview: boolean;
+  // Each tab carries its own diff layout, so toggling Split/Unified on
+  // one file doesn't change every other open tab.
+  diffStyle: DiffStyle;
 }
 
 export function DiffView() {
   const { repoId, diffId } = useParams({ from: "/repos/$repoId/diffs/$diffId" });
-  const { data: repos = [] } = useRepos();
-  const repo = repos.find((r) => r.id === repoId);
   const resolved = useResolvedDiff(repoId, diffId);
+  const worktrees = useWorktrees(repoId);
 
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
-  const [diffStyle, setDiffStyle] = useState<DiffStyle>("split");
+  const [treeMode, setTreeMode] = useState<TreeMode>("changed");
+  const fullTree = useFullFileTree(repoId, diffId);
+
+  // Look up the worktree the right side is bound to, so the header
+  // chip can show both the worktree name and its current branch without
+  // an extra IPC just for that label.
+  const boundWorktree = useMemo<Worktree | null>(() => {
+    if (!resolved.data?.diff.rightWorktreePath) return null;
+    return (
+      worktrees.data?.find((w) => w.path === resolved.data!.diff.rightWorktreePath) ?? null
+    );
+  }, [resolved.data, worktrees.data]);
+
+  // Paths in the changed-files set route to the DiffEditor; everything
+  // else from the full tree opens as a plain Editor.
+  const changedPaths = useMemo(() => {
+    const s = new Set<string>();
+    for (const f of resolved.data?.files ?? []) s.add(f.path);
+    return s;
+  }, [resolved.data]);
 
   // Single click opens as preview (replaces any existing preview);
   // double click or starting to edit promotes the active tab to permanent.
@@ -48,18 +87,42 @@ export function DiffView() {
         }
         return prev;
       }
+      const newTab: Tab = { path, preview: mode === "preview", diffStyle: "split" };
       if (mode === "preview") {
         const previewIdx = prev.findIndex((t) => t.preview);
         if (previewIdx >= 0) {
           const next = [...prev];
-          next[previewIdx] = { path, preview: true };
+          next[previewIdx] = newTab;
           return next;
         }
       }
-      return [...prev, { path, preview: mode === "preview" }];
+      return [...prev, newTab];
     });
     setActivePath(path);
   }, []);
+
+  const setTabDiffStyle = useCallback((path: string, next: DiffStyle) => {
+    setTabs((prev) => {
+      const idx = prev.findIndex((t) => t.path === path);
+      if (idx < 0) return prev;
+      if (prev[idx].diffStyle === next) return prev;
+      const out = [...prev];
+      out[idx] = { ...out[idx], diffStyle: next };
+      return out;
+    });
+  }, []);
+
+  // First mount, or any time the resolved diff loads and no tab is open
+  // yet, land directly on the first unreviewed file (falling back to
+  // the first file when everything is already reviewed). The user came
+  // here to read; making them click to start the reading is friction.
+  useEffect(() => {
+    if (activePath !== null) return;
+    const files = resolved.data?.files ?? [];
+    if (files.length === 0) return;
+    const target = files.find((f) => !f.reviewed) ?? files[0];
+    if (target) openFile(target.path, "preview");
+  }, [resolved.data, activePath, openFile]);
 
   const closeTab = useCallback(
     (path: string) => {
@@ -82,55 +145,15 @@ export function DiffView() {
     : null;
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
-      <div aria-hidden className="absolute inset-x-0 top-0 z-30 h-7" style={dragRegion("drag")} />
-      <header className="flex shrink-0 flex-col gap-2 border-b border-border px-4 pt-10 pb-3">
-        <div className="flex items-center gap-2">
-          <Link to="/" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-            <ArrowLeft />
-            Diffs
-          </Link>
-          <span className="text-muted-foreground/60">/</span>
-          <div className="min-w-0 truncate text-sm text-muted-foreground">
-            {repo?.name ?? repoId}
-          </div>
-          <span className="text-muted-foreground/60">/</span>
-          <div className="min-w-0 flex-1 truncate text-sm font-medium">{diffName ?? ""}</div>
-          <div className="flex shrink-0 items-center gap-2">
-            {resolved.data ? (
-              <PinButton
-                repoId={repoId}
-                diffId={diffId}
-                pinned={resolved.data.diff.pinned !== null}
-              />
-            ) : null}
-            <Segmented
-              label="Diff layout"
-              value={diffStyle}
-              onChange={setDiffStyle}
-              options={[
-                { value: "split", label: "Split" },
-                { value: "inline", label: "Inline" },
-              ]}
-            />
-          </div>
-        </div>
-        {resolved.data ? (
-          <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground/80">
-            <span className="truncate">{labelForRef(resolved.data.diff.left)}</span>
-            <span className="text-muted-foreground/40">↔</span>
-            <span className="truncate">{labelForRef(resolved.data.diff.right)}</span>
-            {resolved.data.diff.rightWorktreePath ? (
-              <span
-                className="ml-auto truncate rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
-                title={resolved.data.diff.rightWorktreePath}
-              >
-                {tildify(resolved.data.diff.rightWorktreePath)}
-              </span>
-            ) : null}
-          </div>
-        ) : null}
-      </header>
+    <div className="flex h-full min-h-0 flex-col">
+      <DiffHeader
+        repoId={repoId}
+        diffId={diffId}
+        diffName={diffName}
+        diff={resolved.data?.diff ?? null}
+        files={resolved.data?.files ?? null}
+        boundWorktree={boundWorktree}
+      />
       <main className="flex min-h-0 flex-1">
         {resolved.isLoading ? (
           <LoadingSkeleton />
@@ -142,6 +165,10 @@ export function DiffView() {
               repoId={repoId}
               diffId={diffId}
               files={resolved.data.files}
+              fullPaths={fullTree.data ?? null}
+              fullLoading={fullTree.isLoading}
+              mode={treeMode}
+              onModeChange={setTreeMode}
               activePath={activePath}
               onClick={(p) => openFile(p, "preview")}
               onDoubleClick={(p) => openFile(p, "permanent")}
@@ -153,6 +180,7 @@ export function DiffView() {
                 onActivate={setActivePath}
                 onClose={closeTab}
                 onPromote={(p) => openFile(p, "permanent")}
+                onSetDiffStyle={setTabDiffStyle}
               />
               <div className="min-h-0 flex-1">
                 {activePath ? (
@@ -161,11 +189,18 @@ export function DiffView() {
                     repoId={repoId}
                     diffId={diffId}
                     path={activePath}
-                    diffStyle={diffStyle}
+                    diffStyle={
+                      tabs.find((t) => t.path === activePath)?.diffStyle ?? "split"
+                    }
+                    isChanged={changedPaths.has(activePath)}
+                    boundWorktree={boundWorktree}
                   />
-                ) : (
-                  <EmptyTabState />
-                )}
+                ) : resolved.data.files.length === 0 ? (
+                  <EmptyChangesHint
+                    treeMode={treeMode}
+                    onSwitchToFull={() => setTreeMode("full")}
+                  />
+                ) : null}
               </div>
             </section>
           </>
@@ -175,10 +210,139 @@ export function DiffView() {
   );
 }
 
+function DiffHeader({
+  repoId,
+  diffId,
+  diffName,
+  diff,
+  files,
+  boundWorktree,
+}: {
+  repoId: string;
+  diffId: string;
+  diffName: string | null;
+  diff: Diff | null;
+  files: FileChange[] | null;
+  boundWorktree: Worktree | null;
+}) {
+  const setPin = useSetPin();
+  const reviewed = files ? files.filter((f) => f.reviewed).length : 0;
+  const total = files ? files.length : 0;
+  const needsCount = files ? files.filter((f) => f.needsReReview).length : 0;
+  const pinned = diff?.pinned !== undefined && diff?.pinned !== null;
+  const onTogglePin = () => {
+    if (!diff) return;
+    setPin.mutate({ repoId, diffId, pinned: !pinned });
+  };
+  return (
+    <AppToolbar>
+      <Link
+        to="/"
+        style={dragRegion("no-drag")}
+        className={cn(
+          buttonVariants({ variant: "ghost", size: "icon-sm" }),
+          "shrink-0 text-muted-foreground hover:text-foreground",
+        )}
+        title="Back to diffs"
+        aria-label="Back to diffs"
+      >
+        <ArrowLeft />
+      </Link>
+      <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">
+        {diffName ?? ""}
+      </h1>
+      {diff ? <HeaderChip diff={diff} boundWorktree={boundWorktree} /> : null}
+      <div className="flex-1" />
+      {files && total > 0 ? (
+        <span
+          className="tabular shrink-0 text-xs text-muted-foreground"
+          title={`${reviewed} of ${total} files reviewed`}
+        >
+          <span className={reviewed === total ? "text-emerald-600 dark:text-emerald-400" : ""}>
+            {reviewed}
+          </span>
+          <span className="text-muted-foreground/50">/{total}</span>
+        </span>
+      ) : null}
+      {needsCount > 0 ? (
+        <span
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+          title={`${needsCount} file${needsCount === 1 ? "" : "s"} need re-review`}
+        >
+          <RefreshCcw className="size-3" />
+          <span className="tabular">{needsCount}</span>
+        </span>
+      ) : null}
+      <ToolbarActions>
+        <ThemeToggle />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={onTogglePin}
+          disabled={!diff || setPin.isPending}
+          title={pinned ? "Unpin" : "Pin"}
+          className={cn(
+            "shrink-0",
+            pinned ? "text-foreground/80" : "text-muted-foreground/70 hover:text-foreground",
+          )}
+        >
+          <Pin className={pinned ? "fill-current" : ""} />
+        </Button>
+      </ToolbarActions>
+    </AppToolbar>
+  );
+}
+
+function HeaderChip({
+  diff,
+  boundWorktree,
+}: {
+  diff: Diff;
+  boundWorktree: Worktree | null;
+}) {
+  if (diff.rightWorktreePath) {
+    // Folder icon establishes the "this is on disk" meaning so the
+    // worktree name doesn't need an "in" prefix and the branch can
+    // sit beside it in mono without a separator dot.
+    const name = lastSegment(diff.rightWorktreePath);
+    const branch = boundWorktree?.branch ?? null;
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-300"
+        title={`Bound to ${name} at ${diff.rightWorktreePath}. PReview reads its current state; opening doesn't change your checkout.`}
+      >
+        <FolderGit2 className="size-3 shrink-0" aria-hidden />
+        <span className="font-medium">{name}</span>
+        {branch ? (
+          <span className="font-mono text-amber-700/80 dark:text-amber-300/80">{branch}</span>
+        ) : null}
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 font-mono text-[11px] text-muted-foreground/90"
+      title={diffTitle(diff.left, diff.right)}
+    >
+      {labelForRef(diff.left)}
+      <span className="text-muted-foreground/50">↔</span>
+      {labelForRef(diff.right)}
+    </span>
+  );
+}
+
+function lastSegment(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
+}
+
 function FileTreePanel({
   repoId,
   diffId,
   files,
+  fullPaths,
+  fullLoading,
+  mode,
+  onModeChange,
   activePath,
   onClick,
   onDoubleClick,
@@ -186,6 +350,10 @@ function FileTreePanel({
   repoId: string;
   diffId: string;
   files: FileChange[];
+  fullPaths: string[] | null;
+  fullLoading: boolean;
+  mode: TreeMode;
+  onModeChange: (next: TreeMode) => void;
   activePath: string | null;
   onClick: (path: string) => void;
   onDoubleClick: (path: string) => void;
@@ -195,85 +363,395 @@ function FileTreePanel({
   const onToggleReviewed = (path: string, next: boolean) => {
     setReviewed.mutate({ repoId, diffId, path, reviewed: next });
   };
+
+  const changedByPath = useMemo(() => {
+    const m = new Map<string, FileChange>();
+    for (const f of files) m.set(f.path, f);
+    return m;
+  }, [files]);
+
+  // In full-tree mode we merge the changed-files set with the full
+  // listing so changed files stay annotated (kind + diffstat + reviewed
+  // checkbox) and untouched files render plain.
+  const rows = useMemo(() => {
+    if (mode === "changed") return files.map((f) => ({ kind: "changed" as const, file: f }));
+    if (!fullPaths) return files.map((f) => ({ kind: "changed" as const, file: f }));
+    const seen = new Set<string>();
+    const merged: Array<
+      { kind: "changed"; file: FileChange } | { kind: "plain"; path: string }
+    > = [];
+    for (const p of fullPaths) {
+      seen.add(p);
+      const ch = changedByPath.get(p);
+      merged.push(ch ? { kind: "changed", file: ch } : { kind: "plain", path: p });
+    }
+    // Catch additions / untracked that may not be in `git ls-tree`.
+    for (const f of files) {
+      if (!seen.has(f.path)) merged.push({ kind: "changed", file: f });
+    }
+    return merged;
+  }, [mode, files, fullPaths, changedByPath]);
+
+  // Build, compact (fuse single-child folder chains), and sort the tree
+  // so the rail renders as a real hierarchy. Re-built whenever the row
+  // set changes; cheap for typical diffs.
+  const tree = useMemo(() => buildTree(rows), [rows]);
+  const allFolderPaths = useMemo(() => collectFolderPaths(tree), [tree]);
+
+  // Collapse defaults differ by mode: Changed mode opens everything
+  // (the user came here to read the diff and the set is small), Full
+  // mode opens nothing (a real repo's full tree has thousands of files
+  // and the user navigates by drilling in). We re-init on mode flip
+  // and on the first time the full tree loads, but otherwise leave
+  // user toggles alone so file-list refetches don't blow them away.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const fullModeInitialized = useRef(false);
+  useEffect(() => {
+    if (mode === "changed") {
+      setCollapsed(new Set());
+      fullModeInitialized.current = false;
+      return;
+    }
+    if (!fullModeInitialized.current && allFolderPaths.length > 0) {
+      setCollapsed(new Set(allFolderPaths));
+      fullModeInitialized.current = true;
+    }
+  }, [mode, allFolderPaths]);
+
+  const onToggleCollapse = useCallback((path: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  // Flatten the tree to only the rows currently visible (folders +
+  // descendants of any expanded folder). The virtualizer scrolls this
+  // list, so the cost of full-tree mode is bounded by what's actually
+  // on screen rather than the total path count.
+  const flatRows = useMemo(() => flattenTree(tree, collapsed), [tree, collapsed]);
+
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const virtualizer = useVirtualizer({
+    count: flatRows.length,
+    getScrollElement: () => viewportRef.current,
+    estimateSize: () => 24,
+    overscan: 12,
+    getItemKey: (i) => flatRows[i]?.key ?? i,
+  });
+
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-border bg-card/30">
-      <div className="flex shrink-0 items-baseline justify-between gap-2 border-b border-border px-3 py-2.5">
+    <aside className="flex w-[272px] shrink-0 flex-col border-r border-border bg-card/30">
+      <div className="flex shrink-0 flex-col gap-2 border-b border-border px-3 py-2.5">
         <div className="flex items-baseline gap-2">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
             Files
           </div>
-          <div className="text-xs text-muted-foreground/60">
-            {files.length} {files.length === 1 ? "file" : "files"}
+          <div
+            className="text-xs text-muted-foreground/60"
+            title={`${reviewedCount} of ${files.length} reviewed`}
+          >
+            {mode === "changed" ? `${files.length} changed` : `${rows.length} in tree`}
           </div>
         </div>
-        {files.length > 0 ? (
-          <div className="tabular text-xs text-muted-foreground/70">
-            {reviewedCount}/{files.length}
-          </div>
-        ) : null}
+        <Segmented
+          label="File tree mode"
+          value={mode}
+          onChange={onModeChange}
+          options={[
+            { value: "changed", label: "Changed" },
+            { value: "full", label: "Full tree" },
+          ]}
+          className="w-full"
+        />
       </div>
-      <ul className="flex-1 overflow-y-auto p-2 text-xs">
-        {files.length === 0 ? (
-          <li className="px-2 py-3 text-center text-muted-foreground">No changes.</li>
+      <div ref={viewportRef} className="flex-1 overflow-y-auto p-2 text-xs">
+        {mode === "changed" && files.length === 0 ? (
+          <div className="px-2 py-3 text-center text-muted-foreground">No changes.</div>
+        ) : mode === "full" && fullLoading && !fullPaths ? (
+          <div className="px-2 py-3 text-center text-muted-foreground">Loading tree…</div>
         ) : (
-          files.map((f) => {
-            const active = f.path === activePath;
-            return (
-              <li key={f.path} className="group">
+          <div
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
+            {virtualizer.getVirtualItems().map((vi) => {
+              const row = flatRows[vi.index];
+              if (!row) return null;
+              return (
                 <div
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md pl-1.5 pr-2 py-1 transition-colors",
-                    active
-                      ? "bg-accent text-accent-foreground"
-                      : "text-foreground hover:bg-muted",
-                    f.reviewed && !active && "opacity-60",
-                  )}
+                  key={row.key}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${vi.start}px)`,
+                  }}
                 >
-                  <ReviewedCheckbox
-                    checked={f.reviewed}
-                    pending={setReviewed.isPending}
-                    onChange={(next) => onToggleReviewed(f.path, next)}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => onClick(f.path)}
-                    onDoubleClick={() => onDoubleClick(f.path)}
-                    className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 text-left outline-none",
-                      focusRing,
-                    )}
-                    title={f.path}
-                  >
-                    <Badge tone={kindTone(f.kind)} mono className="shrink-0">
-                      {kindShort(f.kind)}
-                    </Badge>
-                    <span
-                      className={cn(
-                        "min-w-0 flex-1 truncate font-mono",
-                        f.reviewed && "line-through decoration-muted-foreground/50",
-                      )}
-                    >
-                      {basename(f.path)}
-                    </span>
-                    {f.needsReReview ? (
-                      <RefreshCcw
-                        className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
-                        aria-label="Needs re-review"
-                      />
-                    ) : f.additions > 0 || f.deletions > 0 ? (
-                      <span className="tabular shrink-0 text-muted-foreground/70">
-                        <span className="text-emerald-500">+{f.additions}</span>{" "}
-                        <span className="text-rose-500">-{f.deletions}</span>
-                      </span>
-                    ) : null}
-                  </button>
+                  {row.kind === "folder" ? (
+                    <TreeFolderRow
+                      node={row.node}
+                      depth={row.depth}
+                      collapsed={collapsed.has(row.node.path)}
+                      onToggle={onToggleCollapse}
+                    />
+                  ) : (
+                    <TreeFileRow
+                      node={row.node}
+                      depth={row.depth}
+                      active={row.node.path === activePath}
+                      setReviewedPending={setReviewed.isPending}
+                      onToggleReviewed={onToggleReviewed}
+                      onClick={onClick}
+                      onDoubleClick={onDoubleClick}
+                    />
+                  )}
                 </div>
-              </li>
-            );
-          })
+              );
+            })}
+          </div>
         )}
-      </ul>
+      </div>
     </aside>
+  );
+}
+
+type TreeNode =
+  | { kind: "folder"; name: string; path: string; children: TreeNode[] }
+  | { kind: "file"; name: string; path: string; file: FileChange | null };
+
+type TreeRowInput =
+  | { kind: "changed"; file: FileChange }
+  | { kind: "plain"; path: string };
+
+type TreeFolder = Extract<TreeNode, { kind: "folder" }>;
+type TreeFile = Extract<TreeNode, { kind: "file" }>;
+
+type FlatRow =
+  | { kind: "folder"; node: TreeFolder; depth: number; key: string }
+  | { kind: "file"; node: TreeFile; depth: number; key: string };
+
+// Walk the tree producing a flat list of currently-visible rows, given
+// which folders are collapsed. Root folder is skipped (it has no row);
+// its children sit at depth 0. Used by the virtualizer.
+function flattenTree(root: TreeFolder, collapsed: Set<string>): FlatRow[] {
+  const out: FlatRow[] = [];
+  function walk(node: TreeNode, depth: number): void {
+    if (node.kind === "folder") {
+      out.push({ kind: "folder", node, depth, key: node.path });
+      if (collapsed.has(node.path)) return;
+      for (const child of node.children) walk(child, depth + 1);
+    } else {
+      out.push({ kind: "file", node, depth, key: node.path });
+    }
+  }
+  for (const child of root.children) walk(child, 0);
+  return out;
+}
+
+// Every folder path in the (compacted) tree. Feeds the "default
+// collapsed" initialization for Full-tree mode.
+function collectFolderPaths(root: TreeFolder): string[] {
+  const out: string[] = [];
+  function walk(node: TreeNode): void {
+    if (node.kind !== "folder") return;
+    if (node.path) out.push(node.path);
+    for (const child of node.children) walk(child);
+  }
+  walk(root);
+  return out;
+}
+
+function buildTree(rows: TreeRowInput[]): TreeFolder {
+  const root: TreeFolder = { kind: "folder", name: "", path: "", children: [] };
+  for (const row of rows) {
+    const path = row.kind === "changed" ? row.file.path : row.path;
+    const file = row.kind === "changed" ? row.file : null;
+    insertPath(root, path.split("/"), 0, path, file);
+  }
+  // sortTree/compactTree only collapse non-root folders, so the root
+  // stays a folder; reassert the type for the renderer.
+  const compactedSorted = compactTree(sortTree(root));
+  return compactedSorted as TreeFolder;
+}
+
+function insertPath(
+  parent: TreeNode,
+  segs: string[],
+  depth: number,
+  fullPath: string,
+  file: FileChange | null,
+): void {
+  if (parent.kind !== "folder") return;
+  const segment = segs[depth];
+  const isLast = depth === segs.length - 1;
+  const partialPath = segs.slice(0, depth + 1).join("/");
+  let child = parent.children.find((c) => c.name === segment);
+  if (!child) {
+    child = isLast
+      ? { kind: "file", name: segment, path: fullPath, file }
+      : { kind: "folder", name: segment, path: partialPath, children: [] };
+    parent.children.push(child);
+  } else if (isLast && child.kind === "file") {
+    // Same path seen again (e.g. duplicated by the full-tree merge): keep
+    // the FileChange annotation if either occurrence had one.
+    child.file = file ?? child.file;
+  }
+  if (!isLast) insertPath(child, segs, depth + 1, fullPath, file);
+}
+
+// Fuse chains of single-child folders so "src/components/ui/Button.tsx"
+// renders as one folder row "src/components/ui" + the file, rather than
+// four indented rows.
+function compactTree(node: TreeNode): TreeNode {
+  if (node.kind !== "folder") return node;
+  const compactedChildren = node.children.map(compactTree);
+  if (node.name !== "" && compactedChildren.length === 1) {
+    const only = compactedChildren[0];
+    if (only.kind === "folder") {
+      return {
+        kind: "folder",
+        name: `${node.name}/${only.name}`,
+        path: only.path,
+        children: only.children,
+      };
+    }
+  }
+  return { ...node, children: compactedChildren };
+}
+
+// Folders before files, alphabetical within each.
+function sortTree(node: TreeNode): TreeNode {
+  if (node.kind !== "folder") return node;
+  const sorted = [...node.children].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  return { ...node, children: sorted.map(sortTree) };
+}
+
+function TreeFolderRow({
+  node,
+  depth,
+  collapsed,
+  onToggle,
+}: {
+  node: TreeFolder;
+  depth: number;
+  collapsed: boolean;
+  onToggle: (path: string) => void;
+}) {
+  // Slightly tighter than file rows because the folder row carries less
+  // information; sits at depth*12 + 4 from the left edge so the chevron
+  // lines up cleanly under its parent's name when expanded. The icon
+  // resolves by the last segment of the (possibly compacted) name, so
+  // chains like "src/components/ui" pick up the deepest folder's icon.
+  const indent = depth * 12 + 4;
+  const iconName = node.name.split("/").pop() ?? node.name;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(node.path)}
+      className={cn(
+        "flex h-6 w-full items-center gap-1 rounded-md pr-2 text-left outline-none transition-colors hover:bg-muted",
+        focusRing,
+      )}
+      style={{ paddingLeft: indent }}
+      title={node.path}
+    >
+      <ChevronRight
+        className={cn(
+          "size-3 shrink-0 text-muted-foreground transition-transform",
+          !collapsed && "rotate-90",
+        )}
+      />
+      <MaterialIcon kind="folder" name={iconName} expanded={!collapsed} className="size-3.5" />
+      <span className="min-w-0 truncate font-mono text-muted-foreground/90">
+        {node.name}
+      </span>
+    </button>
+  );
+}
+
+function TreeFileRow({
+  node,
+  depth,
+  active,
+  setReviewedPending,
+  onToggleReviewed,
+  onClick,
+  onDoubleClick,
+}: {
+  node: TreeFile;
+  depth: number;
+  active: boolean;
+  setReviewedPending: boolean;
+  onToggleReviewed: (path: string, next: boolean) => void;
+  onClick: (path: string) => void;
+  onDoubleClick: (path: string) => void;
+}) {
+  const file = node.file;
+  // Files indent one notch deeper than the matching chevron so the
+  // basename column visually anchors under the folder name above.
+  const indent = depth * 12 + 6;
+  return (
+    <div
+      className={cn(
+        "group flex h-6 items-center gap-1.5 rounded-md pr-2 transition-colors",
+        active ? "bg-accent text-accent-foreground" : "text-foreground hover:bg-muted",
+        file?.reviewed && !active && "opacity-60",
+      )}
+      style={{ paddingLeft: indent }}
+    >
+      {file ? (
+        <ReviewedCheckbox
+          checked={file.reviewed}
+          pending={setReviewedPending}
+          onChange={(next) => onToggleReviewed(file.path, next)}
+        />
+      ) : (
+        <span className="size-4 shrink-0" aria-hidden />
+      )}
+      <button
+        type="button"
+        onClick={() => onClick(node.path)}
+        onDoubleClick={() => onDoubleClick(node.path)}
+        className={cn(
+          "flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none",
+          focusRing,
+        )}
+        title={node.path}
+      >
+        <MaterialIcon kind="file" name={node.name} className="size-3.5" />
+        {file ? (
+          <Badge tone={kindTone(file.kind)} mono className="shrink-0">
+            {kindShort(file.kind)}
+          </Badge>
+        ) : null}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate font-mono",
+            file?.reviewed && "line-through decoration-muted-foreground/50",
+            !file && "text-muted-foreground/80",
+          )}
+        >
+          {node.name}
+        </span>
+        {file?.needsReReview ? (
+          <RefreshCcw
+            className="size-3 shrink-0 text-amber-600 dark:text-amber-400"
+            aria-label="Needs re-review"
+          />
+        ) : file && (file.additions > 0 || file.deletions > 0) ? (
+          <span className="tabular shrink-0 text-muted-foreground/70">
+            <span className="text-emerald-500">+{file.additions}</span>{" "}
+            <span className="text-rose-500">-{file.deletions}</span>
+          </span>
+        ) : null}
+      </button>
+    </div>
   );
 }
 
@@ -316,60 +794,77 @@ function TabStrip({
   onActivate,
   onClose,
   onPromote,
+  onSetDiffStyle,
 }: {
   tabs: Tab[];
   activePath: string | null;
   onActivate: (path: string) => void;
   onClose: (path: string) => void;
   onPromote: (path: string) => void;
+  onSetDiffStyle: (path: string, next: DiffStyle) => void;
 }) {
+  // Nothing open: render a 32px empty strip so the layout doesn't jump.
+  // (Land-on-first-unreviewed means the user almost never sees this on
+  // the happy path; the strip exists to hold the border below.)
   if (tabs.length === 0) {
-    return (
-      <div className="flex shrink-0 items-center border-b border-border bg-card/40 px-3 py-1.5 text-xs text-muted-foreground/60">
-        No file open.
-      </div>
-    );
+    return <div className="h-8 shrink-0 border-b border-border bg-card/40" />;
   }
+  const activeTab = tabs.find((t) => t.path === activePath) ?? null;
   return (
-    <div className="flex shrink-0 items-stretch overflow-x-auto border-b border-border bg-card/40">
-      {tabs.map((tab) => {
-        const active = tab.path === activePath;
-        return (
-          <div
-            key={tab.path}
-            className={cn(
-              "group flex max-w-[260px] shrink-0 items-center gap-1.5 border-r border-border px-2.5 py-1.5 text-xs",
-              active
-                ? "bg-background text-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => onActivate(tab.path)}
-              onDoubleClick={() => onPromote(tab.path)}
+    <div className="flex h-8 shrink-0 items-stretch border-b border-border bg-card/40">
+      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto">
+        {tabs.map((tab) => {
+          const active = tab.path === activePath;
+          return (
+            <div
+              key={tab.path}
               className={cn(
-                "flex min-w-0 items-center gap-1.5 outline-none",
-                focusRing,
-                tab.preview && "italic",
+                "group flex max-w-[260px] shrink-0 items-center gap-1.5 border-r border-border px-2.5 text-xs",
+                active
+                  ? "bg-background text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
-              title={tab.path}
             >
-              <FileText className="size-3 shrink-0 opacity-60" />
-              <span className="min-w-0 truncate font-mono">{basename(tab.path)}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onClose(tab.path)}
-              className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
-              title="Close tab"
-              aria-label="Close tab"
-            >
-              <X className="size-3" />
-            </button>
-          </div>
-        );
-      })}
+              <button
+                type="button"
+                onClick={() => onActivate(tab.path)}
+                onDoubleClick={() => onPromote(tab.path)}
+                className={cn(
+                  "flex min-w-0 items-center gap-1.5 outline-none",
+                  focusRing,
+                  tab.preview && "italic",
+                )}
+                title={tab.path}
+              >
+                <FileText className="size-3 shrink-0 opacity-60" />
+                <span className="min-w-0 truncate font-mono">{basename(tab.path)}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onClose(tab.path)}
+                className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                title="Close tab"
+                aria-label="Close tab"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {activeTab ? (
+        <div className="flex shrink-0 items-center border-l border-border px-2">
+          <Segmented
+            label="Diff layout"
+            value={activeTab.diffStyle}
+            onChange={(next) => onSetDiffStyle(activeTab.path, next)}
+            options={[
+              { value: "split", label: "Split" },
+              { value: "inline", label: "Inline" },
+            ]}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -381,11 +876,42 @@ function DiffTabBody({
   diffId,
   path,
   diffStyle,
+  isChanged,
+  boundWorktree,
 }: {
   repoId: string;
   diffId: string;
   path: string;
   diffStyle: DiffStyle;
+  isChanged: boolean;
+  boundWorktree: Worktree | null;
+}) {
+  if (!isChanged) {
+    return <FileBrowseBody repoId={repoId} diffId={diffId} path={path} />;
+  }
+  return (
+    <DiffEditorBody
+      repoId={repoId}
+      diffId={diffId}
+      path={path}
+      diffStyle={diffStyle}
+      boundWorktree={boundWorktree}
+    />
+  );
+}
+
+function DiffEditorBody({
+  repoId,
+  diffId,
+  path,
+  diffStyle,
+  boundWorktree,
+}: {
+  repoId: string;
+  diffId: string;
+  path: string;
+  diffStyle: DiffStyle;
+  boundWorktree: Worktree | null;
 }) {
   const { resolved } = useTheme();
   const leftQ = useReadFile(repoId, diffId, path, "left");
@@ -457,9 +983,10 @@ function DiffTabBody({
   const editable = rightQ.data?.editable ?? false;
   const language = languageForPath(path);
 
+  const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;
   return (
     <div className="relative h-full w-full">
-      <SaveBadge state={saveState} editable={editable} />
+      <SaveBadge state={saveState} editable={editable} worktreeName={liveWorktreeName} />
       {loading ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
           Loading…
@@ -469,17 +996,16 @@ function DiffTabBody({
         original={left}
         modified={right}
         language={language}
-        theme={resolved === "dark" ? "vs-dark" : "light"}
+        theme={resolved === "dark" ? "pierre-dark" : "pierre-light"}
         onMount={onMount}
         options={{
           readOnly: !editable,
           renderSideBySide: diffStyle === "split",
           originalEditable: false,
           automaticLayout: true,
-          fontSize: 12,
-          lineHeight: 18,
-          fontFamily:
-            'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
+          fontSize: PIERRE_FONT_SIZE,
+          lineHeight: PIERRE_LINE_HEIGHT,
+          fontFamily: PIERRE_FONT_FAMILY,
           minimap: { enabled: false },
           scrollBeyondLastLine: false,
           wordWrap: "off",
@@ -492,15 +1018,39 @@ function DiffTabBody({
   );
 }
 
-function SaveBadge({ state, editable }: { state: SaveState; editable: boolean }) {
-  if (!editable) {
+function SaveBadge({
+  state,
+  editable,
+  worktreeName,
+}: {
+  state: SaveState;
+  editable: boolean;
+  worktreeName: string | null;
+}) {
+  // Read-only diffs (PR head SHAs, frozen pins) are the boring case. The
+  // editable case is the one worth signaling, so the chip says "live"
+  // when nothing is happening, and the user gets save-state transitions
+  // when they're typing.
+  if (!editable) return null;
+  if (state === "idle") {
     return (
-      <div className="absolute right-3 top-2 z-10 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm">
-        read-only
+      <div
+        className="absolute right-3 top-2 z-10 inline-flex items-center gap-1.5 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm"
+        title={
+          worktreeName
+            ? `Edits write to the ${worktreeName} worktree's working tree.`
+            : "Edits write to the working tree."
+        }
+      >
+        <span>live</span>
+        {worktreeName ? (
+          <span className="font-medium normal-case tracking-normal text-muted-foreground">
+            {worktreeName}
+          </span>
+        ) : null}
       </div>
     );
   }
-  if (state === "idle") return null;
   const label =
     state === "dirty"
       ? "unsaved"
@@ -527,22 +1077,9 @@ function SaveBadge({ state, editable }: { state: SaveState; editable: boolean })
   );
 }
 
-function EmptyTabState() {
-  return (
-    <div className="flex h-full items-center justify-center p-8">
-      <div className="max-w-sm text-center">
-        <h2 className="text-sm font-medium text-foreground">No file open.</h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Click a file in the tree to preview it. Double-click to open as a permanent tab.
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function LoadingSkeleton() {
   return (
-    <aside className="w-72 shrink-0 border-r border-border bg-card/30 p-3">
+    <aside className="w-[272px] shrink-0 border-r border-border bg-card/30 p-3">
       <div className="flex flex-col gap-1.5">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className={cn("h-5", i % 2 ? "w-3/4" : "w-2/3")} />
@@ -561,28 +1098,100 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function PinButton({
+// Single-pane editor used when the user opens a file from the Full tree
+// that isn't part of the diff. Shows the right-side content (or the
+// left side if the file no longer exists on the right). Read-only; this
+// surface is for tracing symbols, not authoring.
+function FileBrowseBody({
   repoId,
   diffId,
-  pinned,
+  path,
 }: {
   repoId: string;
   diffId: string;
-  pinned: boolean;
+  path: string;
 }) {
-  const setPin = useSetPin();
+  const { resolved } = useTheme();
+  const rightQ = useReadFile(repoId, diffId, path, "right");
+  const leftQ = useReadFile(repoId, diffId, path, "left");
+
+  const onMount: OnMount = useCallback((editor) => {
+    const layout = () => editor.layout();
+    layout();
+    window.addEventListener("resize", layout);
+  }, []);
+
+  const loading = rightQ.isLoading || leftQ.isLoading;
+  const error = rightQ.error || leftQ.error;
+  if (error) return <ErrorState message={(error as Error).message} />;
+
+  // Prefer right; fall back to left if right is missing (e.g., file was
+  // deleted between left and right).
+  const content = rightQ.data?.content ?? leftQ.data?.content ?? "";
+
   return (
-    <Button
-      size="sm"
-      variant={pinned ? "warn" : "secondary"}
-      onClick={() => setPin.mutate({ repoId, diffId, pinned: !pinned })}
-      disabled={setPin.isPending}
-      aria-pressed={pinned}
-      title={pinned ? "Pinned to these commits" : "Pin to current commits"}
-    >
-      {pinned ? <Pin /> : <PinOff />}
-      {pinned ? "Pinned" : "Pin"}
-    </Button>
+    <div className="relative h-full w-full">
+      <div className="absolute right-3 top-2 z-10 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm">
+        unchanged
+      </div>
+      {loading ? (
+        <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+          Loading…
+        </div>
+      ) : null}
+      <Editor
+        value={content}
+        language={languageForPath(path)}
+        theme={resolved === "dark" ? "pierre-dark" : "pierre-light"}
+        onMount={onMount}
+        options={{
+          readOnly: true,
+          automaticLayout: true,
+          fontSize: PIERRE_FONT_SIZE,
+          lineHeight: PIERRE_LINE_HEIGHT,
+          fontFamily: PIERRE_FONT_FAMILY,
+          minimap: { enabled: false },
+          scrollBeyondLastLine: false,
+          wordWrap: "off",
+          renderWhitespace: "none",
+          guides: { indentation: false },
+        }}
+      />
+    </div>
+  );
+}
+
+function EmptyChangesHint({
+  treeMode,
+  onSwitchToFull,
+}: {
+  treeMode: TreeMode;
+  onSwitchToFull: () => void;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="max-w-md text-center">
+        <h2 className="text-sm font-medium text-foreground">No changes between these refs.</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The left and right resolve to the same tree, so there's nothing to review.
+          {treeMode === "changed"
+            ? " You can still switch to Full tree to browse the project."
+            : " Pick a file from the tree on the left to browse it."}
+        </p>
+        {treeMode === "changed" ? (
+          <button
+            type="button"
+            onClick={onSwitchToFull}
+            className={cn(
+              "mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent outline-none",
+              focusRing,
+            )}
+          >
+            Switch to Full tree
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

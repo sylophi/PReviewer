@@ -91,8 +91,11 @@ const api = {
       path: string;
       content: string;
     }): Promise<{ ok: true }> => ipcRenderer.invoke(CHANNELS.DiffsWriteFile, input),
-    createFromPullRequest: (input: { repoId: string; number: number }): Promise<Diff> =>
-      ipcRenderer.invoke(CHANNELS.DiffsCreateFromPullRequest, input),
+    createFromPullRequest: (input: {
+      repoId: string;
+      number: number;
+      rightWorktreePath?: string;
+    }): Promise<Diff> => ipcRenderer.invoke(CHANNELS.DiffsCreateFromPullRequest, input),
   },
   gh: {
     readiness: (): Promise<GhReadiness> => ipcRenderer.invoke(CHANNELS.GhReadiness),
