@@ -1,20 +1,30 @@
-// Monokai Pro-inspired TextMate theme. The palette values are part of
-// the publicly-documented Monokai Pro look (drawn from screenshots and
-// the editor's published color reference); the JSON below is our own
-// composition mapping those colors onto TextMate scopes, so there's
-// nothing license-restricted in the bundle.
+// Monokai Pro accents applied on the existing Pierre-soft canvas.
+//
+// The accent hex values (yellow / magenta / orange / cyan / green /
+// purple / comment-gray) come from the widely-shared Monokai Pro
+// palette as it appears in open-source ports (monokai-pro.nvim,
+// Roberto Achar's VS Code extension, etc). They're not from the
+// official Sublime addon (paid, no primary source pulled), so think of
+// them as "Monokai Pro as the OSS ecosystem knows it" rather than
+// pixel-identical to Wimer Hazenberg's original.
+//
+// The UI surface colors below (background, foreground, line numbers,
+// selection, indent guides) are deliberately kept on the Pierre Soft
+// #171717 canvas; only the syntax tokens and diff highlights pick up
+// the Monokai Pro accents.
 //
 // Loaded by monaco-setup.ts and bridged into Monaco via @shikijs/monaco.
 import type { ThemeInput } from "shiki";
 
-// Pro filter palette.
-const bg = "#2D2A2E";
-const fg = "#FCFCFA";
-const subtle = "#403E41";
-const dim = "#5B5A5D";
+// Pierre Soft canvas. Matches what was here before the swap.
+const bg = "#171717";
+const fg = "#E8E8E8";
+const subtle = "#232323";
+const dim = "#6E6E6E";
+
+// Monokai Pro accents.
 const muted = "#727072";
 const punctuation = "#939293";
-
 const yellow = "#FFD866"; // strings
 const magenta = "#FF6188"; // keywords, tags, operators
 const orange = "#FC9867"; // params, regex, escapes
@@ -28,22 +38,22 @@ export const monokaiProTheme = {
   colors: {
     "editor.background": bg,
     "editor.foreground": fg,
-    "editor.lineHighlightBackground": "#3E3B3F",
+    "editor.lineHighlightBackground": "#1C1C1C",
     "editor.lineHighlightBorder": "#00000000",
-    "editor.selectionBackground": "#5B595C",
-    "editor.selectionHighlightBackground": "#403E41",
-    "editor.wordHighlightBackground": "#403E41",
+    "editor.selectionBackground": "#2A2A2A",
+    "editor.selectionHighlightBackground": subtle,
+    "editor.wordHighlightBackground": subtle,
     "editor.findMatchBackground": "#FFD86660",
     "editor.findMatchHighlightBackground": "#FFD86630",
-    "editorLineNumber.foreground": dim,
-    "editorLineNumber.activeForeground": fg,
-    "editorCursor.foreground": yellow,
+    "editorLineNumber.foreground": "#4A4A4A",
+    "editorLineNumber.activeForeground": dim,
+    "editorCursor.foreground": fg,
     "editorIndentGuide.background": subtle,
-    "editorIndentGuide.activeBackground": dim,
+    "editorIndentGuide.activeBackground": "#2A2A2A",
     "editorBracketMatch.background": subtle,
-    "editorBracketMatch.border": dim,
+    "editorBracketMatch.border": "#2A2A2A",
     "editorWhitespace.foreground": subtle,
-    "editorWidget.background": "#221F22",
+    "editorWidget.background": "#1C1C1C",
     "editorWidget.border": subtle,
 
     // Diff editor: green for inserted, magenta for removed, low alpha
