@@ -57,6 +57,10 @@ function RouteErrorFallback({ error, reset }: { error: Error; reset: () => void 
   );
 }
 
+// Memory history (not browser history) because an Electron BrowserWindow
+// has no URL bar to drive: routes are an internal navigation concept
+// and shouldn't put a real URL in webContents nor survive a reload as
+// anything other than the dashboard.
 export const router = createRouter({
   routeTree,
   history: createMemoryHistory({ initialEntries: ["/"] }),

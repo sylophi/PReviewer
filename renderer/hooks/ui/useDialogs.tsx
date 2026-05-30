@@ -3,7 +3,6 @@ import { NewDiffDialog } from "@/components/NewDiffDialog";
 import { AddProjectView } from "@/components/palette/AddProjectView";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ModalShell } from "@/components/ui/modal-shell";
-import { notifyError } from "@/lib/toast";
 
 interface ConfirmRequest {
   title: string;
@@ -48,8 +47,12 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
     try {
       await active.req.onConfirm();
       close();
-    } catch (err) {
-      notifyError("Action failed", err instanceof Error ? err.message : String(err));
+    } catch {
+      // Mutation hooks already own the error toast via their
+      // meta.errorTitle (see MutationCache.onError in index.tsx). A
+      // second generic "Action failed" toast here would race or hide
+      // the better-titled one; just clear the pending state so the
+      // user can retry or cancel.
       setConfirmPending(false);
     }
   };

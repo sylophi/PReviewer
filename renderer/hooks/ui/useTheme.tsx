@@ -56,10 +56,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyDocumentTheme(resolved);
-    // Tell the main process so the NSVisualEffectView material follows
-    // the in-app appearance, not the OS one.
-    void window.api.runtime.setTheme(theme);
-  }, [resolved, theme]);
+    // Push the resolved value (not the raw pick) so the main process's
+    // nativeTheme.themeSource always ends up as a concrete light/dark
+    // instead of bouncing through "system" and re-resolving against the
+    // OS. The MediaQuery listener above keeps `resolved` in sync when
+    // the user is on "system" and the OS appearance changes.
+    void window.api.runtime.setTheme(resolved);
+  }, [resolved]);
 
   const setTheme = useCallback((next: Theme) => {
     try {
