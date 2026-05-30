@@ -63,6 +63,8 @@ export function FileBrowseBody({
           lineHeight: PIERRE_LINE_HEIGHT,
           fontFamily: PIERRE_FONT_FAMILY,
           minimap: { enabled: false },
+          overviewRulerLanes: 0,
+          overviewRulerBorder: false,
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",

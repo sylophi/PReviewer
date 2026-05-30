@@ -144,6 +144,14 @@ export function DiffEditorBody({
           lineHeight: PIERRE_LINE_HEIGHT,
           fontFamily: PIERRE_FONT_FAMILY,
           minimap: { enabled: false },
+          // The overview ruler is a thin per-pane ribbon on the right
+          // edge that shows decoration markers (selection, errors). The
+          // diff editor adds a third ribbon for the diff hunks. With
+          // the scrollbar already on the right, three stacked ribbons
+          // read as visual clutter. Drop all three.
+          overviewRulerLanes: 0,
+          overviewRulerBorder: false,
+          renderOverviewRuler: false,
           scrollBeyondLastLine: false,
           wordWrap: "off",
           renderWhitespace: "none",
