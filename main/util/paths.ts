@@ -12,12 +12,6 @@ export function previewRoot(): string {
   return join(app.getPath("appData"), app.isPackaged ? "PReview" : "PReview-dev");
 }
 
-// Pre-Application-Support layout: ~/preview[-dev]. Used only by the
-// one-time migration in bootstrap; remove once no installs remain on it.
-export function legacyPreviewRoot(): string {
-  return join(homedir(), app.isPackaged ? "preview" : "preview-dev");
-}
-
 export function expandHome(path: string): string {
   if (path === "~") return homedir();
   if (path.startsWith("~/")) return join(homedir(), path.slice(2));
