@@ -1,19 +1,30 @@
-// Per-user global config at ~/preview[-dev]/config.json. Today we only
-// read the saved theme; full read/write helpers will return when the
-// settings surface lands.
+// Per-user global config at ~/preview[-dev]/config.json. Holds
+// preferences that span the whole app (theme, editor font). The schema
+// lives in @shared/schemas so the renderer and the IPC contract share
+// it; this module owns the disk IO and a short read cache.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { z } from "zod";
-import { type Theme, ThemeSchema } from "@shared/schemas";
+import { type GlobalConfig, GlobalConfigSchema, type Theme, ThemeSchema } from "@shared/schemas";
+import { atomicWriteJson, readJsonOrNull } from "../util/jsonFile";
 import { previewRoot } from "../util/paths";
-
-export const GlobalConfigSchema = z.object({
-  theme: ThemeSchema.optional(),
-});
-export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+import { ttlValueCache } from "../util/ttlCache";
 
 function configPath(): string {
   return join(previewRoot(), "config.json");
+}
+
+const cache = ttlValueCache<GlobalConfig>(
+  5_000,
+  async () => (await readJsonOrNull(configPath(), GlobalConfigSchema)) ?? {},
+);
+
+export async function readGlobalConfig(): Promise<GlobalConfig> {
+  return cache.get();
+}
+
+export async function writeGlobalConfig(config: GlobalConfig): Promise<void> {
+  await atomicWriteJson(configPath(), GlobalConfigSchema.parse(config));
+  cache.invalidate();
 }
 
 // Sync read used by the main process at window-create time, where async

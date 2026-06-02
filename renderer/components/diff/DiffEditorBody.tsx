@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import type { Worktree } from "@shared/schemas";
+import { useEditorSettings } from "@/hooks/config/useEditorSettings";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
 import { useWriteFile } from "@/hooks/diffs/useWriteFile";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
 import { cn } from "@/lib/utils";
-import {
-  PIERRE_FONT_FAMILY,
-  PIERRE_FONT_SIZE,
-  PIERRE_LINE_HEIGHT,
-} from "@/monaco-setup";
 import { ErrorState } from "./ErrorState";
 import { lastSegment } from "./paths";
 import type { DiffStyle } from "./TabStrip";
@@ -31,6 +27,7 @@ export function DiffEditorBody({
   boundWorktree: Worktree | null;
 }) {
   const { resolved } = useTheme();
+  const editor = useEditorSettings();
   const leftQ = useReadFile(repoId, diffId, path, "left");
   const rightQ = useReadFile(repoId, diffId, path, "right");
   const write = useWriteFile();
@@ -140,9 +137,10 @@ export function DiffEditorBody({
           useInlineViewWhenSpaceIsLimited: false,
           originalEditable: false,
           automaticLayout: true,
-          fontSize: PIERRE_FONT_SIZE,
-          lineHeight: PIERRE_LINE_HEIGHT,
-          fontFamily: PIERRE_FONT_FAMILY,
+          fontSize: editor.fontSize,
+          lineHeight: editor.lineHeight,
+          fontFamily: editor.fontFamily,
+          fontLigatures: editor.fontLigatures,
           minimap: { enabled: false },
           // Keep the diff editor's hunk overview ruler on (the strip
           // that shows where changes live in the file and lets you

@@ -5,6 +5,7 @@ import {
   diffs,
   fs,
   gh,
+  globalConfig,
   repos,
   runtime,
   windowApi,
@@ -21,6 +22,7 @@ const api = {
   repos,
   diffs,
   gh,
+  globalConfig,
   window: windowApi,
 } as const;
 

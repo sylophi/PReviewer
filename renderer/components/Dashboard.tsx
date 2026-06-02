@@ -15,7 +15,7 @@ import { formatRelativeTime } from "@/lib/relativeTime";
 import { tildify } from "@/lib/projectPaths";
 import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";
-import { AppToolbar, ThemeToggle, ToolbarActions } from "./AppToolbar";
+import { AppToolbar, SettingsButton, ThemeToggle, ToolbarActions } from "./AppToolbar";
 import { Button } from "./ui/button";
 
 export function Dashboard() {
@@ -35,6 +35,7 @@ export function Dashboard() {
         <div className="flex-1" />
         <ToolbarActions>
           <ThemeToggle />
+          <SettingsButton />
           <Button variant="ghost" size="sm" onClick={openAddRepo}>
             <FolderOpen />
             Add repo

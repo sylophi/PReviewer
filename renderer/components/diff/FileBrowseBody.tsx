@@ -1,13 +1,9 @@
 import { useCallback } from "react";
 import { Editor, type OnMount } from "@monaco-editor/react";
+import { useEditorSettings } from "@/hooks/config/useEditorSettings";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
-import {
-  PIERRE_FONT_FAMILY,
-  PIERRE_FONT_SIZE,
-  PIERRE_LINE_HEIGHT,
-} from "@/monaco-setup";
 import { ErrorState } from "./ErrorState";
 
 // Single-pane editor used when the user opens a file from the Full tree
@@ -24,6 +20,7 @@ export function FileBrowseBody({
   path: string;
 }) {
   const { resolved } = useTheme();
+  const editorOpts = useEditorSettings();
   const rightQ = useReadFile(repoId, diffId, path, "right");
   const leftQ = useReadFile(repoId, diffId, path, "left");
 
@@ -59,9 +56,10 @@ export function FileBrowseBody({
         options={{
           readOnly: true,
           automaticLayout: true,
-          fontSize: PIERRE_FONT_SIZE,
-          lineHeight: PIERRE_LINE_HEIGHT,
-          fontFamily: PIERRE_FONT_FAMILY,
+          fontSize: editorOpts.fontSize,
+          lineHeight: editorOpts.lineHeight,
+          fontFamily: editorOpts.fontFamily,
+          fontLigatures: editorOpts.fontLigatures,
           minimap: { enabled: false },
           overviewRulerLanes: 0,
           overviewRulerBorder: false,

@@ -1,6 +1,5 @@
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -8,11 +7,12 @@ import {
   type ReactNode,
 } from "react";
 import type { Theme } from "@shared/schemas";
+import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 
 const STORAGE_KEY = "preview.theme";
 
 interface ThemeContextValue {
-  // The user's pick. "system" follows the OS.
+  // The user's saved pick (from config.json). "system" follows the OS.
   theme: Theme;
   // The actually-applied mode after resolving "system" against the OS.
   resolved: "light" | "dark";
@@ -21,7 +21,11 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function readStored(): Theme {
+// Boot hint: the persisted source of truth is config.json (async), but
+// reading it would flash the wrong theme for a frame. Mirror the saved
+// value into localStorage on every change and trust it until the
+// config query resolves.
+function readBootHint(): Theme {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (raw === "light" || raw === "dark" || raw === "system") return raw;
@@ -42,9 +46,13 @@ function applyDocumentTheme(resolved: "light" | "dark"): void {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => readStored());
-  const [osDark, setOsDark] = useState<boolean>(() => systemDark());
+  const { data: config, isLoading } = useGlobalConfig();
+  const patch = useGlobalConfigPatch();
 
+  const [bootHint] = useState<Theme>(() => readBootHint());
+  const theme: Theme = isLoading ? bootHint : (config?.theme ?? "system");
+
+  const [osDark, setOsDark] = useState<boolean>(() => systemDark());
   useEffect(() => {
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = (e: MediaQueryListEvent) => setOsDark(e.matches);
@@ -57,21 +65,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyDocumentTheme(resolved);
     // Push the resolved value (not the raw pick) so the main process's
-    // nativeTheme.themeSource always ends up as a concrete light/dark
-    // instead of bouncing through "system" and re-resolving against the
-    // OS. The MediaQuery listener above keeps `resolved` in sync when
-    // the user is on "system" and the OS appearance changes.
+    // nativeTheme.themeSource lands on a concrete light/dark for the
+    // vibrancy material instead of re-resolving "system" against the OS.
     void window.api.runtime.setTheme(resolved);
   }, [resolved]);
 
-  const setTheme = useCallback((next: Theme) => {
+  // Mirror the saved value into localStorage so the next launch paints
+  // without waiting for the config query.
+  useEffect(() => {
+    if (isLoading) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, next);
+      window.localStorage.setItem(STORAGE_KEY, theme);
     } catch {
-      // Best-effort; the user's pick still takes effect for this session.
+      // Best-effort; the pick still takes effect this session.
     }
-    setThemeState(next);
-  }, []);
+  }, [isLoading, theme]);
+
+  const setTheme = useMemo(
+    () => (next: Theme) => patch.mutate({ theme: next }),
+    [patch],
+  );
 
   const value = useMemo(() => ({ theme, resolved, setTheme }), [theme, resolved, setTheme]);
 

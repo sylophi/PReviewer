@@ -4,6 +4,9 @@
 // domain; shared prefixes let one invalidateQueries call cascade
 // through everything in that subtree (e.g. all diff data for a repo).
 export const queryKeys = {
+  globalConfig: () => ["globalConfig"] as const,
+  runtimeInfo: () => ["runtime", "info"] as const,
+
   repos: () => ["repos"] as const,
   repoBranches: (repoId: string | null) =>
     ["repos", repoId, "branches"] as const,

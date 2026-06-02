@@ -107,11 +107,6 @@ shikiToMonaco(highlighter, monaco);
 // default CDN load. This keeps the app fully offline.
 loader.config({ monaco });
 
-// JetBrains Mono Variable, bundled via @fontsource-variable/jetbrains-mono
-// (SIL OFL 1.1; the package ships the license text). SF Mono and the
-// generic stack remain as fallbacks for the moment the @font-face is
-// still resolving and for non-macOS platforms without SF Mono installed.
-export const PIERRE_FONT_FAMILY =
-  '"JetBrains Mono Variable", "SF Mono", Monaco, Consolas, "Ubuntu Mono", "Liberation Mono", "Courier New", monospace';
-export const PIERRE_FONT_SIZE = 12;
-export const PIERRE_LINE_HEIGHT = 18;
+// Font family / size / ligatures are user settings now: the defaults
+// live in renderer/lib/editorFonts.ts and the live values resolve
+// through useEditorSettings(). The editor surfaces read them from there.

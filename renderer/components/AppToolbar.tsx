@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Moon, MonitorSmartphone, Sun } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Moon, MonitorSmartphone, Settings as SettingsIcon, Sun } from "lucide-react";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { cn, dragRegion } from "@/lib/utils";
-import { Button } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
 
 // The top strip on every route. Opaque bg-background matches the canvas
 // below; a hairline bottom border separates the chrome from the content.
@@ -46,6 +47,24 @@ export function ToolbarActions({
     >
       {children}
     </div>
+  );
+}
+
+// Gear link to the settings route. Sits in the toolbar action cluster
+// next to the theme toggle on the dashboard and diff surfaces.
+export function SettingsButton() {
+  return (
+    <Link
+      to="/settings"
+      className={cn(
+        buttonVariants({ variant: "ghost", size: "icon-sm" }),
+        "text-muted-foreground hover:text-foreground",
+      )}
+      title="Settings"
+      aria-label="Settings"
+    >
+      <SettingsIcon />
+    </Link>
   );
 }
 

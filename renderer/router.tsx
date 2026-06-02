@@ -9,6 +9,7 @@ import {
 import { ErrorFallback } from "@/components/ErrorFallback";
 import { Dashboard } from "@/components/Dashboard";
 import { DiffView } from "@/components/diff/DiffView";
+import { Settings } from "@/components/settings/Settings";
 
 // Each route owns its own AppToolbar at the top and the route's content
 // below. The whole shell is opaque (bg-background) so the BrowserWindow
@@ -44,7 +45,13 @@ const diffRoute = createRoute({
   component: KeyedDiffView,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, diffRoute]);
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/settings",
+  component: Settings,
+});
+
+const routeTree = rootRoute.addChildren([indexRoute, diffRoute, settingsRoute]);
 
 function RouteErrorFallback({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();

@@ -8,9 +8,45 @@ export const SetThemePayloadSchema = z.object({
   theme: ThemeSchema,
 });
 
+// Editor font choices. The id is the persisted value; the renderer maps
+// it to a concrete font stack (see renderer/lib/editorFonts.ts), so the
+// two must agree on these literals.
+export const EditorFontSchema = z.enum(["jetbrains-mono", "sf-mono", "system-mono"]);
+export type EditorFontId = z.infer<typeof EditorFontSchema>;
+
+export const EDITOR_FONT_SIZE_MIN = 10;
+export const EDITOR_FONT_SIZE_MAX = 18;
+
+// Per-user global config at ~/preview[-dev]/config.json. Every field is
+// optional; absent means "use the built-in default". Read at startup
+// (theme, synchronously, for the vibrancy material) and through the
+// globalConfig IPC for everything else.
+export const GlobalConfigSchema = z.object({
+  theme: ThemeSchema.optional(),
+  editorFont: EditorFontSchema.optional(),
+  editorFontSize: z
+    .number()
+    .int()
+    .min(EDITOR_FONT_SIZE_MIN)
+    .max(EDITOR_FONT_SIZE_MAX)
+    .optional(),
+  editorLigatures: z.boolean().optional(),
+});
+export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
+
+export const WriteGlobalConfigPayloadSchema = z.object({
+  config: GlobalConfigSchema,
+});
+
 export const RuntimeInfoSchema = z.object({
   homedir: z.string().min(1),
   isDev: z.boolean(),
+  // App + platform versions and the on-disk config root, surfaced in the
+  // settings "About" section.
+  configRoot: z.string().min(1),
+  electronVersion: z.string(),
+  chromeVersion: z.string(),
+  nodeVersion: z.string(),
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;
 

@@ -9,15 +9,17 @@ import { dialogContract } from "@shared/ipc/modules/dialog";
 import { diffsContract } from "@shared/ipc/modules/diffs";
 import { fsContract } from "@shared/ipc/modules/fs";
 import { ghContract } from "@shared/ipc/modules/gh";
+import { globalConfigContract } from "@shared/ipc/modules/globalConfig";
 import { reposContract } from "@shared/ipc/modules/repos";
 import { runtimeContract } from "@shared/ipc/modules/runtime";
 import { windowContract } from "@shared/ipc/modules/window";
-import type { RefExpr, Theme } from "@shared/schemas";
+import type { GlobalConfig, RefExpr, Theme } from "@shared/schemas";
 
 const dialogClient = buildClient(dialogContract);
 const diffsClient = buildClient(diffsContract);
 const fsClient = buildClient(fsContract);
 const ghClient = buildClient(ghContract);
+const globalConfigClient = buildClient(globalConfigContract);
 const reposClient = buildClient(reposContract);
 const runtimeClient = buildClient(runtimeContract);
 const windowClient = buildClient(windowContract);
@@ -93,6 +95,11 @@ export const diffs = {
 export const gh = {
   readiness: () => ghClient.readiness(),
   listPullRequests: (repoId: string) => ghClient.listPullRequests({ repoId }),
+} as const;
+
+export const globalConfig = {
+  read: () => globalConfigClient.read(),
+  write: (config: GlobalConfig) => globalConfigClient.write({ config }),
 } as const;
 
 export const windowApi = {
