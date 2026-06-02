@@ -1,19 +1,16 @@
-import { ArrowLeft, ExternalLink, FolderOpen, Minus, Plus } from "lucide-react";
+import { ArrowLeft, Minus, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { EditorFontId, Theme } from "@shared/schemas";
 import { EDITOR_FONT_SIZE_MAX, EDITOR_FONT_SIZE_MIN } from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
-import { useRuntimeInfo } from "@/hooks/system/useRuntimeInfo";
 import {
   DEFAULT_EDITOR_FONT,
   DEFAULT_EDITOR_FONT_SIZE,
   EDITOR_FONTS,
 } from "@/lib/editorFonts";
-import { tildify } from "@/lib/projectPaths";
-import { notifyError } from "@/lib/toast";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import { AppToolbar } from "../AppToolbar";
-import { Button, buttonVariants } from "../ui/button";
+import { buttonVariants } from "../ui/button";
 import { SectionHeading } from "../ui/section-heading";
 import { Segmented } from "../ui/segmented";
 
@@ -98,7 +95,6 @@ export function Settings() {
           </Section>
 
           <VersionSection />
-          <LocationSection />
         </div>
       </main>
     </div>
@@ -236,56 +232,6 @@ function VersionSection() {
       <SectionHeading>Version</SectionHeading>
       <div className="font-mono text-sm text-foreground select-text">
         {__APP_VERSION__} <span className="text-muted-foreground">({__APP_COMMIT__})</span>
-      </div>
-    </section>
-  );
-}
-
-function LocationSection() {
-  const { data: info } = useRuntimeInfo();
-  const root = info?.configRoot ?? null;
-  const configFile = root ? `${root}/config.json` : null;
-
-  return (
-    <section className="flex flex-col gap-3">
-      <SectionHeading>Location</SectionHeading>
-      {root ? (
-        <div className="truncate font-mono text-sm text-muted-foreground select-text" title={root}>
-          {tildify(root)}
-        </div>
-      ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!root}
-          onClick={() => {
-            if (root) {
-              window.api.shell
-                .showItemInFolder(root)
-                .catch((err) => notifyError("Couldn't reveal folder", err));
-            }
-          }}
-        >
-          <FolderOpen />
-          Reveal in Finder
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!configFile}
-          onClick={() => {
-            if (configFile) {
-              window.api.shell
-                .openPath(configFile)
-                .catch((err) => notifyError("Couldn't open file", err));
-            }
-          }}
-          title={configFile ?? undefined}
-        >
-          <ExternalLink />
-          Open config file
-        </Button>
       </div>
     </section>
   );

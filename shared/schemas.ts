@@ -41,16 +41,8 @@ export const WriteGlobalConfigPayloadSchema = z.object({
 export const RuntimeInfoSchema = z.object({
   homedir: z.string().min(1),
   isDev: z.boolean(),
-  // On-disk root for PReview's config + per-repo state. Surfaced in the
-  // settings Location section.
-  configRoot: z.string().min(1),
 });
 export type RuntimeInfo = z.infer<typeof RuntimeInfoSchema>;
-
-// Shell IPC payloads (reveal a path in Finder, open a file/dir).
-export const ShellPathPayloadSchema = z.object({
-  path: z.string().min(1),
-});
 
 export const ListDirectoryPayloadSchema = z.object({
   path: z.string().min(1),

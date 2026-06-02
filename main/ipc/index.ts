@@ -5,7 +5,6 @@ import { ghContract } from "@shared/ipc/modules/gh";
 import { globalConfigContract } from "@shared/ipc/modules/globalConfig";
 import { reposContract } from "@shared/ipc/modules/repos";
 import { runtimeContract } from "@shared/ipc/modules/runtime";
-import { shellContract } from "@shared/ipc/modules/shell";
 import { dialogHandlers } from "./dialog";
 import { diffsHandlers } from "./diffs";
 import { fsHandlers } from "./fs";
@@ -14,7 +13,6 @@ import { globalConfigHandlers } from "./globalConfig";
 import { registerContract } from "./register";
 import { reposHandlers } from "./repos";
 import { runtimeHandlers } from "./runtime";
-import { shellHandlers } from "./shell";
 
 export function registerIpcHandlers(): void {
   registerContract(runtimeContract, runtimeHandlers);
@@ -24,5 +22,4 @@ export function registerIpcHandlers(): void {
   registerContract(diffsContract, diffsHandlers);
   registerContract(ghContract, ghHandlers);
   registerContract(globalConfigContract, globalConfigHandlers);
-  registerContract(shellContract, shellHandlers);
 }

@@ -12,7 +12,6 @@ import { ghContract } from "@shared/ipc/modules/gh";
 import { globalConfigContract } from "@shared/ipc/modules/globalConfig";
 import { reposContract } from "@shared/ipc/modules/repos";
 import { runtimeContract } from "@shared/ipc/modules/runtime";
-import { shellContract } from "@shared/ipc/modules/shell";
 import { windowContract } from "@shared/ipc/modules/window";
 import type { GlobalConfig, RefExpr, Theme } from "@shared/schemas";
 
@@ -23,7 +22,6 @@ const ghClient = buildClient(ghContract);
 const globalConfigClient = buildClient(globalConfigContract);
 const reposClient = buildClient(reposContract);
 const runtimeClient = buildClient(runtimeContract);
-const shellClient = buildClient(shellContract);
 const windowClient = buildClient(windowContract);
 
 export const runtime = {
@@ -102,11 +100,6 @@ export const gh = {
 export const globalConfig = {
   read: () => globalConfigClient.read(),
   write: (config: GlobalConfig) => globalConfigClient.write({ config }),
-} as const;
-
-export const shell = {
-  openPath: (path: string) => shellClient.openPath({ path }),
-  showItemInFolder: (path: string) => shellClient.showItemInFolder({ path }),
 } as const;
 
 export const windowApi = {
