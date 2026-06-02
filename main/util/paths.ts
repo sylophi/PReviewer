@@ -1,12 +1,21 @@
-// Root directory for PReview on-disk state. Split between packaged and dev
-// builds so a `pnpm run dev` session can't trample a real ~/preview/.
+// Root directory for PReview on-disk state (config.json + per-repo diff
+// metadata). PReview stores no worktrees or user-navigable data, so this
+// lives in the macOS app-data dir rather than a visible ~/preview folder.
+// Split between packaged and dev builds so a `pnpm run dev` session can't
+// trample real data.
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { app } from "electron";
 
 export function previewRoot(): string {
-  const name = app.isPackaged ? "preview" : "preview-dev";
-  return join(homedir(), name);
+  // appData on macOS is ~/Library/Application Support.
+  return join(app.getPath("appData"), app.isPackaged ? "PReview" : "PReview-dev");
+}
+
+// Pre-Application-Support layout: ~/preview[-dev]. Used only by the
+// one-time migration in bootstrap; remove once no installs remain on it.
+export function legacyPreviewRoot(): string {
+  return join(homedir(), app.isPackaged ? "preview" : "preview-dev");
 }
 
 export function expandHome(path: string): string {
