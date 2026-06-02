@@ -3,6 +3,7 @@ import type { Handlers } from "@shared/ipc/types";
 import { findRepoOrThrow } from "../config/repos";
 import { type PullRequestView, viewPullRequest } from "../githubCli";
 import {
+  clearWorktreeBinding,
   createDiff,
   deleteDiff,
   findDiffOrThrow,
@@ -14,6 +15,7 @@ import {
   enrichWithReviewed,
   freezeRef,
   fullFileTree,
+  isGitRepo,
   readFileAtRef,
   resolveAndDiff,
   rightSideHashForPath,
@@ -25,10 +27,15 @@ import {
 
 async function loadDiffContext(repoId: string, diffId: string) {
   const repo = await findRepoOrThrow(repoId);
-  const diff = await findDiffOrThrow(repoId, diffId);
-  // All right-side git ops (workingTree reads/writes, HEAD resolution,
-  // "is live" checks) route through the bound worktree when present so
-  // a diff against a non-main worktree sees that worktree's state.
+  let diff = await findDiffOrThrow(repoId, diffId);
+  // A diff can be bound to a worktree (rightWorktreePath) so its right-side
+  // git ops see that checkout's state. If the user has since deleted that
+  // worktree, the path is no longer a git dir and every command here would
+  // fail with "not a git repository". Self-heal: strip the dead binding and
+  // fall back to the main repo, where the diff's refs still resolve.
+  if (diff.rightWorktreePath && !(await isGitRepo(diff.rightWorktreePath))) {
+    diff = await clearWorktreeBinding(repoId, diffId);
+  }
   const cwd = diff.rightWorktreePath ?? repo.path;
   return { repo, diff, cwd };
 }

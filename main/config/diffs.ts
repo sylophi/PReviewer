@@ -119,3 +119,16 @@ export async function setPin(
   await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
   return next;
 }
+
+// Drop the rightWorktreePath binding. Called when the bound worktree
+// has been deleted on disk: the diff's refs are still valid against the
+// main repo, so we strip the dead binding rather than fail every git
+// op (or delete the diff). No-op if there was no binding.
+export async function clearWorktreeBinding(repoId: string, diffId: string): Promise<Diff> {
+  const diff = await findDiffOrThrow(repoId, diffId);
+  if (!diff.rightWorktreePath) return diff;
+  const next: Diff = { ...diff, updatedAt: Date.now() };
+  delete (next as { rightWorktreePath?: string }).rightWorktreePath;
+  await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+  return next;
+}
