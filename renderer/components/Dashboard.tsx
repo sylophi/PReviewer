@@ -34,11 +34,11 @@ export function Dashboard() {
         <BrandMark />
         <div className="flex-1" />
         <ToolbarActions>
-          <SettingsButton />
           <Button variant="ghost" size="sm" onClick={openAddRepo}>
             <FolderOpen />
             Add repo
           </Button>
+          <SettingsButton />
         </ToolbarActions>
       </AppToolbar>
       <main className="min-h-0 flex-1 overflow-y-auto">
