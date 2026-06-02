@@ -26,6 +26,7 @@ const shouldNotarizeMac = shouldSignMac && Boolean(osxNotarizeConfig);
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    icon: "assets/icon",
     appBundleId: "com.sylophi.preview",
     appCopyright: "© 2026 sylophi",
     ...(shouldSignMac

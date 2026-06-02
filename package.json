@@ -20,6 +20,7 @@
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
+    "icon": "uv run scripts/build-app-icon.py",
     "postinstall": "node scripts/copy-material-icons.mjs"
   },
   "dependencies": {
