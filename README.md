@@ -6,4 +6,6 @@ Most diff tools show you a patch. PReview shows you the code around it: every ch
 
 `PReview` plays on PR, preview, and review.
 
+PReview is the sister app to [Shigoto no Mori](https://github.com/sylophi/shigoto-no-mori), a desktop app for managing many git worktrees in parallel.
+
 Note: This project is still early and in active development. We only offer macOS Apple Silicon builds at this time.
