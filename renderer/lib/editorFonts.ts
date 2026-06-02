@@ -31,3 +31,10 @@ export const EDITOR_FONTS: Record<EditorFontId, EditorFont> = {
 
 export const DEFAULT_EDITOR_FONT: EditorFontId = "jetbrains-mono";
 export const DEFAULT_EDITOR_FONT_SIZE = 12;
+
+// Line height tracks font size at ~1.5 so it isn't its own setting. The
+// editor surfaces and the settings preview all derive it here so they
+// can't drift.
+export function editorLineHeight(fontSize: number): number {
+  return Math.round(fontSize * 1.5);
+}

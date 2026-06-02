@@ -101,16 +101,19 @@ export function DiffEditorBody({
 
   const loading = leftQ.isLoading || rightQ.isLoading;
   const error = leftQ.error || rightQ.error;
+  const editable = rightQ.data?.editable ?? false;
+  // Keep the editability ref current. Must run on every render path, so
+  // it sits above the error early-return below (no conditional hooks).
+  useEffect(() => {
+    editableRef.current = editable;
+  }, [editable]);
+
   if (error) {
     return <ErrorState message={(error as Error).message} />;
   }
 
   const left = leftQ.data?.content ?? "";
   const right = localRight ?? rightQ.data?.content ?? "";
-  const editable = rightQ.data?.editable ?? false;
-  useEffect(() => {
-    editableRef.current = editable;
-  }, [editable]);
   const language = languageForPath(path);
 
   const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;

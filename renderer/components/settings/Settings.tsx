@@ -7,6 +7,7 @@ import {
   DEFAULT_EDITOR_FONT,
   DEFAULT_EDITOR_FONT_SIZE,
   EDITOR_FONTS,
+  editorLineHeight,
 } from "@/lib/editorFonts";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import { AppToolbar } from "../AppToolbar";
@@ -215,7 +216,7 @@ function EditorPreview({
         style={{
           fontFamily: EDITOR_FONTS[fontId].stack,
           fontSize: `${fontSize}px`,
-          lineHeight: `${Math.round(fontSize * 1.5)}px`,
+          lineHeight: `${editorLineHeight(fontSize)}px`,
           fontFeatureSettings: ligatures ? '"calt" 1, "liga" 1' : '"calt" 0, "liga" 0',
         }}
       >

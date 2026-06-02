@@ -2,6 +2,7 @@ import {
   DEFAULT_EDITOR_FONT,
   DEFAULT_EDITOR_FONT_SIZE,
   EDITOR_FONTS,
+  editorLineHeight,
 } from "@/lib/editorFonts";
 import { useGlobalConfig } from "./useGlobalConfig";
 
@@ -23,7 +24,7 @@ export function useEditorSettings(): EditorSettings {
   return {
     fontFamily: EDITOR_FONTS[fontId].stack,
     fontSize,
-    lineHeight: Math.round(fontSize * 1.5),
+    lineHeight: editorLineHeight(fontSize),
     fontLigatures: data?.editorLigatures ?? false,
   };
 }

@@ -5,7 +5,7 @@
 export const TREE_WIDTH_KEY = "diffView.fileTreeWidth";
 export const TREE_MIN = 200;
 export const TREE_MAX = 600;
-export const TREE_DEFAULT = 272;
+const TREE_DEFAULT = 272;
 
 export function readStoredTreeWidth(): number {
   try {

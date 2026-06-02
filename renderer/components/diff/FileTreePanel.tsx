@@ -49,8 +49,11 @@ export function FileTreePanel({
   // listing so changed files stay annotated (kind + diffstat + reviewed
   // checkbox) and untouched files render plain.
   const rows = useMemo(() => {
-    if (mode === "changed") return files.map((f) => ({ kind: "changed" as const, file: f }));
-    if (!fullPaths) return files.map((f) => ({ kind: "changed" as const, file: f }));
+    // Changed-only mode, or full mode before the tree has loaded: just the
+    // changed files.
+    if (mode === "changed" || !fullPaths) {
+      return files.map((f) => ({ kind: "changed" as const, file: f }));
+    }
     const seen = new Set<string>();
     const merged: Array<
       { kind: "changed"; file: FileChange } | { kind: "plain"; path: string }
