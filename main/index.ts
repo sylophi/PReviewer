@@ -2,6 +2,7 @@ import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { windowContract } from "@shared/ipc/modules/window";
 import { ensurePreviewRoot } from "./app/bootstrap";
+import { applyUserShellPath } from "./app/shellPath";
 import { readThemeSync } from "./config/global";
 import { registerIpcHandlers } from "./ipc";
 import { broadcast } from "./ipc/register";
@@ -52,6 +53,11 @@ function createWindow() {
 }
 
 app.on("ready", async () => {
+  // Packaged macOS launches inherit launchd's stripped PATH, which omits
+  // Homebrew and other user additions where git/gh live. Capture the
+  // interactive shell PATH first so every git/gh child process resolves.
+  // Dev launches start from the terminal and already have the right one.
+  if (app.isPackaged) await applyUserShellPath();
   await ensurePreviewRoot();
   createWindow();
 });
