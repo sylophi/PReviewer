@@ -10,7 +10,7 @@ import {
   EDITOR_FONTS,
 } from "@/lib/editorFonts";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
-import { AppToolbar, ThemeToggle, ToolbarActions } from "../AppToolbar";
+import { AppToolbar } from "../AppToolbar";
 import { buttonVariants } from "../ui/button";
 import { Segmented } from "../ui/segmented";
 
@@ -41,10 +41,6 @@ export function Settings() {
         <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">
           Settings
         </h1>
-        <div className="flex-1" />
-        <ToolbarActions>
-          <ThemeToggle />
-        </ToolbarActions>
       </AppToolbar>
 
       <main className="min-h-0 flex-1 overflow-y-auto">

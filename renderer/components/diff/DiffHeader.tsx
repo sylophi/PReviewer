@@ -3,7 +3,7 @@ import { Link } from "@tanstack/react-router";
 import type { Diff, FileChange, Worktree } from "@shared/schemas";
 import { diffTitle, labelForRef } from "@shared/refExpr";
 import { cn, dragRegion } from "@/lib/utils";
-import { AppToolbar, SettingsButton, ThemeToggle, ToolbarActions } from "../AppToolbar";
+import { AppToolbar, SettingsButton, ToolbarActions } from "../AppToolbar";
 import { buttonVariants } from "../ui/button";
 import { lastSegment } from "./paths";
 
@@ -72,7 +72,6 @@ export function DiffHeader({
         </span>
       ) : null}
       <ToolbarActions>
-        <ThemeToggle />
         <SettingsButton />
       </ToolbarActions>
     </AppToolbar>
