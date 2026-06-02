@@ -1,4 +1,4 @@
-import { ArrowLeft, Minus, Plus } from "lucide-react";
+import { ArrowLeft, ExternalLink, FolderOpen, Minus, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import type { EditorFontId, Theme } from "@shared/schemas";
 import { EDITOR_FONT_SIZE_MAX, EDITOR_FONT_SIZE_MIN } from "@shared/schemas";
@@ -9,9 +9,12 @@ import {
   DEFAULT_EDITOR_FONT_SIZE,
   EDITOR_FONTS,
 } from "@/lib/editorFonts";
+import { tildify } from "@/lib/projectPaths";
+import { notifyError } from "@/lib/toast";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import { AppToolbar } from "../AppToolbar";
-import { buttonVariants } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
+import { SectionHeading } from "../ui/section-heading";
 import { Segmented } from "../ui/segmented";
 
 export function Settings() {
@@ -45,7 +48,7 @@ export function Settings() {
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-2xl flex-col gap-10 px-8 pt-8 pb-16">
-          <Section title="Appearance" subhead="How PReview looks.">
+          <Section title="Appearance">
             <Row label="Theme" hint="System follows your OS setting.">
               <Segmented
                 label="Theme"
@@ -60,7 +63,7 @@ export function Settings() {
             </Row>
           </Section>
 
-          <Section title="Editor" subhead="Applies to every diff and file view.">
+          <Section title="Editor">
             <Row label="Font">
               <Segmented
                 label="Editor font"
@@ -94,7 +97,8 @@ export function Settings() {
             <EditorPreview fontId={fontId} fontSize={fontSize} ligatures={ligatures} />
           </Section>
 
-          <AboutSection />
+          <VersionSection />
+          <LocationSection />
         </div>
       </main>
     </div>
@@ -103,19 +107,14 @@ export function Settings() {
 
 function Section({
   title,
-  subhead,
   children,
 }: {
   title: string;
-  subhead?: string;
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-0.5">
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
-        {subhead ? <p className="text-xs text-muted-foreground">{subhead}</p> : null}
-      </div>
+    <section className="flex flex-col gap-3">
+      <SectionHeading>{title}</SectionHeading>
       <div className="flex flex-col">{children}</div>
     </section>
   );
@@ -231,30 +230,63 @@ function EditorPreview({
   );
 }
 
-function AboutSection() {
-  const { data: info } = useRuntimeInfo();
+function VersionSection() {
   return (
-    <Section title="About">
-      <Row label="Version">
-        <span className="tabular font-mono text-xs text-muted-foreground select-text">
-          {__APP_VERSION__} <span className="text-muted-foreground/50">({__APP_COMMIT__})</span>
-        </span>
-      </Row>
-      <Row label="Electron">
-        <span className="font-mono text-xs text-muted-foreground select-text">
-          {info?.electronVersion ?? "—"}
-        </span>
-      </Row>
-      <Row label="Chromium">
-        <span className="font-mono text-xs text-muted-foreground select-text">
-          {info?.chromeVersion ?? "—"}
-        </span>
-      </Row>
-      <Row label="Config">
-        <span className="max-w-[18rem] truncate font-mono text-xs text-muted-foreground select-text">
-          {info ? `${info.configRoot}/config.json` : "—"}
-        </span>
-      </Row>
-    </Section>
+    <section className="flex flex-col gap-3">
+      <SectionHeading>Version</SectionHeading>
+      <div className="font-mono text-sm text-foreground select-text">
+        {__APP_VERSION__} <span className="text-muted-foreground">({__APP_COMMIT__})</span>
+      </div>
+    </section>
+  );
+}
+
+function LocationSection() {
+  const { data: info } = useRuntimeInfo();
+  const root = info?.configRoot ?? null;
+  const configFile = root ? `${root}/config.json` : null;
+
+  return (
+    <section className="flex flex-col gap-3">
+      <SectionHeading>Location</SectionHeading>
+      {root ? (
+        <div className="truncate font-mono text-sm text-muted-foreground select-text" title={root}>
+          {tildify(root)}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!root}
+          onClick={() => {
+            if (root) {
+              window.api.shell
+                .showItemInFolder(root)
+                .catch((err) => notifyError("Couldn't reveal folder", err));
+            }
+          }}
+        >
+          <FolderOpen />
+          Reveal in Finder
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!configFile}
+          onClick={() => {
+            if (configFile) {
+              window.api.shell
+                .openPath(configFile)
+                .catch((err) => notifyError("Couldn't open file", err));
+            }
+          }}
+          title={configFile ?? undefined}
+        >
+          <ExternalLink />
+          Open config file
+        </Button>
+      </div>
+    </section>
   );
 }

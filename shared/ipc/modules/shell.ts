@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { invoke } from "@shared/ipc/contract";
+import { ShellPathPayloadSchema } from "@shared/schemas";
+
+export const shellContract = {
+  openPath: invoke("shell:openPath", ShellPathPayloadSchema, z.void()),
+  showItemInFolder: invoke("shell:showItemInFolder", ShellPathPayloadSchema, z.void()),
+} as const;
+
+export type ShellContract = typeof shellContract;

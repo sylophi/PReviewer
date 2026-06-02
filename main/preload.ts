@@ -8,6 +8,7 @@ import {
   globalConfig,
   repos,
   runtime,
+  shell,
   windowApi,
 } from "@shared/ipc/client";
 
@@ -23,6 +24,7 @@ const api = {
   diffs,
   gh,
   globalConfig,
+  shell,
   window: windowApi,
 } as const;
 
