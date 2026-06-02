@@ -1,8 +1,8 @@
 # PReview
 
-A desktop app for reviewing git diffs.
+A git diffing tool that gives you powerful context.
 
-Shaped like a stripped-down code editor whose default file-open mode is "diff": persistent review state across sessions, per-file reviewed tracking that flags what changed when the branch moves underneath you, and full Monaco reading affordances on every file. Built for reviewing teammates' PRs and reading end-to-end through what an agent just changed.
+Most diff tools show you a patch. PReview shows you the code around it: every change opens in a full Monaco editor with the whole file in view, jump-to-definition and hover types across the project, and persistent review state that flags what changed when the branch moves underneath you. Built for reviewing teammates' PRs and reading end-to-end through what an agent just changed.
 
 `PReview` plays on PR, preview, and review.
 
