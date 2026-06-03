@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Desktop app for reviewing diffs with persistent review state and LSP-aware reading.",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/sylophi/PReview.git"
