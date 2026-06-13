@@ -17,7 +17,7 @@ export type EditorFontId = z.infer<typeof EditorFontSchema>;
 export const EDITOR_FONT_SIZE_MIN = 10;
 export const EDITOR_FONT_SIZE_MAX = 18;
 
-// Per-user global config at ~/preview[-dev]/config.json. Every field is
+// Per-user global config under PReviewer's app-data directory. Every field is
 // optional; absent means "use the built-in default". Read at startup
 // (theme, synchronously, for the vibrancy material) and through the
 // globalConfig IPC for everything else.

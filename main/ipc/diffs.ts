@@ -123,7 +123,7 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     // refspec (works for fork PRs too; GitHub mirrors PR heads into
     // the base repo). The ref keeps the head SHA reachable across
     // future git GCs; the working tree stays untouched.
-    const localRef = `refs/preview/pull/${number}`;
+    const localRef = `refs/previewer/pull/${number}`;
     await run(cwd, ["fetch", "origin", `pull/${number}/head:${localRef}`]);
 
     // We need the base ref locally so we can compute the three-dot

@@ -98,7 +98,7 @@ jobs:
 
       - name: Verify signing and notarization
         run: |
-          APP_PATH="out/PReview-darwin-arm64/PReview.app"
+          APP_PATH="out/PReviewer-darwin-arm64/PReviewer.app"
           codesign --verify --deep --strict --verbose=2 "$APP_PATH"
           spctl --assess --type execute --verbose "$APP_PATH"
           xcrun stapler validate "$APP_PATH"

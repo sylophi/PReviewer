@@ -2,7 +2,7 @@
 // has done anything. Idempotent.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { previewRoot } from "../util/paths";
+import { previewerRoot } from "../util/paths";
 
 const EMPTY_JSON = "{}\n";
 
@@ -16,8 +16,8 @@ async function ensureFile(path: string, contents: string): Promise<void> {
   }
 }
 
-export async function ensurePreviewRoot(): Promise<void> {
-  const root = previewRoot();
+export async function ensurePReviewerRoot(): Promise<void> {
+  const root = previewerRoot();
   await mkdir(join(root, "repos"), { recursive: true });
   await ensureFile(join(root, "config.json"), EMPTY_JSON);
 }

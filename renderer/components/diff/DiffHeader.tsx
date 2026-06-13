@@ -94,7 +94,7 @@ function HeaderChip({
     return (
       <span
         className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-300"
-        title={`Bound to ${name} at ${diff.rightWorktreePath}. PReview reads its current state; opening doesn't change your checkout.`}
+        title={`Bound to ${name} at ${diff.rightWorktreePath}. PReviewer reads its current state; opening doesn't change your checkout.`}
       >
         <FolderGit2 className="size-3 shrink-0" aria-hidden />
         <span className="font-medium">{name}</span>

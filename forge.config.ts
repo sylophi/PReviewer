@@ -27,7 +27,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: "assets/icon",
-    appBundleId: "com.sylophi.preview",
+    appBundleId: "com.sylophi.previewer",
     appCopyright: "© 2026 sylophi",
     ...(shouldSignMac
       ? {
@@ -48,7 +48,7 @@ const config: ForgeConfig = {
     new PublisherGithub({
       repository: {
         owner: "sylophi",
-        name: "PReview",
+        name: "PReviewer",
       },
       draft: false,
     }),

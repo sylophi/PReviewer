@@ -9,7 +9,7 @@ import {
 import type { Theme } from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 
-const STORAGE_KEY = "preview.theme";
+const STORAGE_KEY = "previewer.theme";
 
 interface ThemeContextValue {
   // The user's saved pick (from config.json). "system" follows the OS.

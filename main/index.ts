@@ -1,7 +1,7 @@
 import { app, BrowserWindow, nativeTheme } from "electron";
 import path from "node:path";
 import { windowContract } from "@shared/ipc/modules/window";
-import { ensurePreviewRoot } from "./app/bootstrap";
+import { ensurePReviewerRoot } from "./app/bootstrap";
 import { applyUserShellPath } from "./app/shellPath";
 import { readThemeSync } from "./config/global";
 import { registerIpcHandlers } from "./ipc";
@@ -58,7 +58,7 @@ app.on("ready", async () => {
   // interactive shell PATH first so every git/gh child process resolves.
   // Dev launches start from the terminal and already have the right one.
   if (app.isPackaged) await applyUserShellPath();
-  await ensurePreviewRoot();
+  await ensurePReviewerRoot();
   createWindow();
 });
 

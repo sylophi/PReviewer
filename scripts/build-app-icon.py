@@ -3,7 +3,7 @@
 # dependencies = ["Pillow>=10.0"]
 # ///
 """
-Build the macOS app icon (.icns) for PReview — a dark editor-surface
+Build the macOS app icon (.icns) for PReviewer — a dark editor-surface
 squircle with stacked "code line" bars, one added (green) and one removed
 (rose), reading as a diff even at small sizes. Colors echo the in-app
 Monokai accents.

@@ -62,7 +62,7 @@ function BrandMark() {
   // a page title.
   return (
     <span className="select-none truncate text-[13.5px] font-semibold tracking-[-0.01em] text-foreground/90">
-      PReview
+      PReviewer
     </span>
   );
 }
@@ -155,7 +155,7 @@ function RepoSection({ repo }: { repo: Repo }) {
             size="icon-sm"
             onClick={onRemove}
             disabled={removeRepo.isPending}
-            title="Remove from PReview"
+            title="Remove from PReviewer"
             className="opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 focus-visible:text-destructive group-hover/repo:opacity-100"
           >
             <Trash2 />
@@ -329,7 +329,7 @@ function WorktreeBindingRow({ path }: { path: string | null }) {
     return (
       <span
         className="inline-flex min-w-0 items-center gap-1.5 self-start truncate rounded-md border border-border/60 bg-muted/30 px-2 py-1 text-[11px] text-muted-foreground"
-        title="Bound to the main worktree. PReview reads its current state; opening doesn't change your checkout."
+        title="Bound to the main worktree. PReviewer reads its current state; opening doesn't change your checkout."
       >
         <FolderGit2 className="size-3 shrink-0" aria-hidden />
         <span className="font-medium">main</span>
@@ -340,7 +340,7 @@ function WorktreeBindingRow({ path }: { path: string | null }) {
   return (
     <span
       className="inline-flex min-w-0 items-center gap-1.5 self-start truncate rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-700 dark:text-amber-300"
-      title={`Bound to the ${last} worktree at ${path}. PReview reads its current state; opening doesn't change your checkout.`}
+      title={`Bound to the ${last} worktree at ${path}. PReviewer reads its current state; opening doesn't change your checkout.`}
     >
       <FolderGit2 className="size-3 shrink-0" aria-hidden />
       <span className="font-medium">{last}</span>
