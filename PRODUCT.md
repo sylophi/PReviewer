@@ -17,7 +17,7 @@ The user is a competent developer who reads code for a living. They are not a ca
 
 ## Product Purpose
 
-PReview is a desktop app for reviewing git diffs. It is the place you do code review.
+PReviewer is a desktop app for reviewing git diffs. It is the place you do code review.
 
 It is shaped like a stripped-down code editor whose default file-open mode is "diff." Not a diff viewer with an editor bolted on; an editor whose only job is review.
 
@@ -39,15 +39,15 @@ Voice: confident tool, no marketing affect, expert defaults. The tool assumes th
 
 Visual lineage: same DNA as shigomori (Geist sans + mono, OKLCH neutrals, single accent reserved for primary actions, generous radii), in the family of Vercel's recent app surfaces and the tuneloupe / fileatlas / hewwo lineage shigomori cites. Native-feeling on macOS first.
 
-**Layout posture differs from shigomori.** Shigomori is a small, modal-feeling utility; PReview is a full-page application. The dashboard fills the window. The diff view fills the window. No centered max-w-4xl columns floating in a sea of background. Use the real estate.
+**Layout posture differs from shigomori.** Shigomori is a small, modal-feeling utility; PReviewer is a full-page application. The dashboard fills the window. The diff view fills the window. No centered max-w-4xl columns floating in a sea of background. Use the real estate.
 
-No themed-aesthetic pass is planned. PReview stays restrained because review is a serious, focused task and personality would compete with the diff content.
+No themed-aesthetic pass is planned. PReviewer stays restrained because review is a serious, focused task and personality would compete with the diff content.
 
 ## Anti-references
 
-- **Cursor / VS Code.** Not because of editor chrome (PReview is editor-shaped on purpose) but because of feature sprawl. Activity bar, status bar, extension marketplace, settings overload, every command on the palette, ten panels you never open. PReview is what's left when you remove everything from VS Code that is not diff review.
-- **GitLens (full installation).** Hover decorations, line blames, commit graphs, side-by-side comparisons, file history panels, settings sprawl. PReview keeps GitLens's checkbox tracking primitive and fixes it (state persists across sessions, survives ref motion gracefully, supports multiple concurrent diffs).
-- **GitHub.com PR pages.** Avatar density, conversation tabs, suggestion threads, the review-state machine as UI, marketing chrome, web-app patterns retrofitted onto a desktop tool. The PR is a source for a diff, not a workflow PReview reproduces. PReview posts comments back to the PR but does not become a GitHub web client.
+- **Cursor / VS Code.** Not because of editor chrome (PReviewer is editor-shaped on purpose) but because of feature sprawl. Activity bar, status bar, extension marketplace, settings overload, every command on the palette, ten panels you never open. PReviewer is what's left when you remove everything from VS Code that is not diff review.
+- **GitLens (full installation).** Hover decorations, line blames, commit graphs, side-by-side comparisons, file history panels, settings sprawl. PReviewer keeps GitLens's checkbox tracking primitive and fixes it (state persists across sessions, survives ref motion gracefully, supports multiple concurrent diffs).
+- **GitHub.com PR pages.** Avatar density, conversation tabs, suggestion threads, the review-state machine as UI, marketing chrome, web-app patterns retrofitted onto a desktop tool. The PR is a source for a diff, not a workflow PReviewer reproduces. PReviewer posts comments back to the PR but does not become a GitHub web client.
 
 ## Design Principles
 
@@ -57,7 +57,7 @@ No themed-aesthetic pass is planned. PReview stays restrained because review is 
 
 3. **Diff-as-default in an editor shell.** Each file opens as a tab. Tabs have VS Code preview/permanent semantics (single-click previews, double-click or edit promotes). The diff is full-file with context, not just hunks. Split is default; unified is a per-tab toggle.
 
-4. **Full-page, not modal.** PReview fills the window. The dashboard is a real surface, not a centered card. The diff view is a real workspace, not a popup. This is the explicit break from shigomori's posture.
+4. **Full-page, not modal.** PReviewer fills the window. The dashboard is a real surface, not a centered card. The diff view is a real workspace, not a popup. This is the explicit break from shigomori's posture.
 
 5. **No IDE features that don't serve review.** If a feature feels like it belongs in a "VS Code Tips & Tricks" article and not a "How to review code well" article, it doesn't belong.
 
@@ -79,7 +79,7 @@ No themed-aesthetic pass is planned. PReview stays restrained because review is 
 
 ## What v0 got wrong (preserve this lesson)
 
-v0's brief read "Cursor is heavy" as "don't be editor-shaped" and concluded PReview should be a diff dashboard that grudgingly allows inline editing. The implementer faithfully built that, with a `@pierre/diffs` hunk renderer, no LSP, and an "Edit" toggle that swaps to a Monaco pane.
+v0's brief read "Cursor is heavy" as "don't be editor-shaped" and concluded PReviewer should be a diff dashboard that grudgingly allows inline editing. The implementer faithfully built that, with a `@pierre/diffs` hunk renderer, no LSP, and an "Edit" toggle that swaps to a Monaco pane.
 
 The actual reading of "Cursor is heavy" should have been "Cursor has hundreds of features unrelated to diff review, weighs 800MB, and forces an IDE-shaped workflow that includes terminals and source control and extensions." The user wants editor-shape (tabs, LSP for reading, live edit, diagnostics). They do not want IDE-scope (refactor, debug, settings, extensions).
 

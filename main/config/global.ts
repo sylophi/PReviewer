@@ -1,4 +1,4 @@
-// Per-user global config at ~/preview[-dev]/config.json. Holds
+// Per-user global config under PReviewer's app-data directory. Holds
 // preferences that span the whole app (theme, editor font). The schema
 // lives in @shared/schemas so the renderer and the IPC contract share
 // it; this module owns the disk IO and a short read cache.
@@ -6,11 +6,11 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { type GlobalConfig, GlobalConfigSchema, type Theme, ThemeSchema } from "@shared/schemas";
 import { atomicWriteJson, readJsonOrNull } from "../util/jsonFile";
-import { previewRoot } from "../util/paths";
+import { previewerRoot } from "../util/paths";
 import { ttlValueCache } from "../util/ttlCache";
 
 function configPath(): string {
-  return join(previewRoot(), "config.json");
+  return join(previewerRoot(), "config.json");
 }
 
 const cache = ttlValueCache<GlobalConfig>(

@@ -1,15 +1,15 @@
-// Per-diff state at ~/preview[-dev]/repos/<repoId>/diffs/<diffId>.json.
+// Per-diff state under PReviewer's app-data directory.
 // One file per diff; listing = readdir + read each.
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { type Diff, DiffSchema, type RefExpr } from "@shared/schemas";
 import { diffTitle } from "@shared/refExpr";
 import { atomicWriteJson, readJsonOrNull } from "../util/jsonFile";
-import { previewRoot } from "../util/paths";
+import { previewerRoot } from "../util/paths";
 import { randomShortId } from "../util/id";
 
 function diffsDir(repoId: string): string {
-  return join(previewRoot(), "repos", repoId, "diffs");
+  return join(previewerRoot(), "repos", repoId, "diffs");
 }
 
 function diffJsonPath(repoId: string, diffId: string): string {

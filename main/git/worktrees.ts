@@ -1,5 +1,5 @@
 // Enumerate the worktrees attached to a repo. shigomori (or any other
-// tool) is responsible for creating, pruning, and managing them; PReview
+// tool) is responsible for creating, pruning, and managing them; PReviewer
 // only reads the list. `git worktree list --porcelain` works from any
 // worktree of the repo since they share the same `.git`.
 import { run } from "./core";

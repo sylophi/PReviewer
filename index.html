@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>PReview</title>
+    <title>PReviewer</title>
     <script>
       // Apply persisted theme synchronously before any CSS or React runs, so
       // the first paint matches the user's choice. The window itself is
@@ -11,7 +11,7 @@
       // background is painted by the main content area only.
       (function () {
         try {
-          var stored = localStorage.getItem("preview.theme") || "system";
+          var stored = localStorage.getItem("previewer.theme") || "system";
           var dark =
             stored === "dark" ||
             (stored === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);

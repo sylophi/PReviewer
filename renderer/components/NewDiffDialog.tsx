@@ -219,7 +219,7 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
                 recentCommits={recents}
               />
               <p className="text-xs leading-relaxed text-muted-foreground/80">
-                PReview reads the worktree as it is right now. It never runs git checkout, so
+                PReviewer reads the worktree as it is right now. It never runs git checkout, so
                 opening this diff later won't disturb whatever you have checked out.
               </p>
             </SectionBlock>
@@ -551,7 +551,7 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
           <p className="text-xs leading-relaxed text-muted-foreground/70">
             PR contents are the same regardless of which worktree you pick. This only chooses
             where git commands run, and where edits would land if you later check the PR branch
-            out yourself. PReview never checks anything out for you.
+            out yourself. PReviewer never checks anything out for you.
           </p>
         </div>
       ) : null}

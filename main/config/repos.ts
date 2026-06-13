@@ -1,15 +1,15 @@
-// Per-repo metadata at ~/preview[-dev]/repos/<repoId>/repo.json. Listing
+// Per-repo metadata under PReviewer's app-data directory. Listing
 // repos = readdir the parent + read each repo.json in parallel.
 import { readdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { type Repo, RepoSchema } from "@shared/schemas";
 import { getOriginUrl, isGitRepo } from "../git";
 import { atomicWriteJson, readJsonOrNull } from "../util/jsonFile";
-import { previewRoot } from "../util/paths";
+import { previewerRoot } from "../util/paths";
 import { repoIdFromPath } from "../util/id";
 
 function reposDir(): string {
-  return join(previewRoot(), "repos");
+  return join(previewerRoot(), "repos");
 }
 
 function repoDir(id: string): string {
