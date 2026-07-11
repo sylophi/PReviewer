@@ -55,12 +55,6 @@
 
 @theme inline {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
-  /* Without this, font-mono falls through Tailwind's default stack to
-     Menlo, which is heavier and wider than everything around it and
-     lacks intermediate weights (font-medium synthesizes to fake bold).
-     The bundled JetBrains Mono matches the editor, so file-tree names,
-     ref chips, and tab labels read as one surface with the code. */
-  --font-mono: "JetBrains Mono Variable", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -104,6 +98,18 @@
     @apply font-sans text-foreground antialiased;
     font-feature-settings: "tnum" 1;
     user-select: none;
+  }
+  /*
+   * Code surfaces opt back out of the body's `antialiased`: on macOS,
+   * -webkit-font-smoothing: antialiased renders glyphs noticeably
+   * thinner than the default smoothing, which is why the same mono
+   * font looks heavier in VS Code / Zed (both leave the editor at the
+   * platform default). UI chrome keeps the light antialiased look;
+   * the code you're reviewing matches native editors.
+   */
+  .monaco-editor,
+  [data-code-surface] {
+    -webkit-font-smoothing: auto;
   }
   .tabular {
     font-variant-numeric: tabular-nums;

@@ -17,7 +17,12 @@ const MONO_FALLBACK = 'Monaco, Consolas, "Liberation Mono", "Courier New", monos
 export const EDITOR_FONTS: Record<EditorFontId, EditorFont> = {
   "jetbrains-mono": {
     label: "JetBrains Mono",
-    stack: `"JetBrains Mono Variable", "SF Mono", ${MONO_FALLBACK}`,
+    // Prefer a locally-installed static JetBrains Mono over the bundled
+    // variable face: the static Regular renders a touch heavier and is
+    // what VS Code / Zed pick up, so users coming from those editors
+    // get identical glyph weight. The bundled variable font remains the
+    // guaranteed fallback.
+    stack: `"JetBrains Mono", "JetBrains Mono Variable", "SF Mono", ${MONO_FALLBACK}`,
   },
   "sf-mono": {
     label: "SF Mono",

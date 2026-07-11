@@ -204,6 +204,7 @@ function EditorPreview({
         Preview
       </div>
       <pre
+        data-code-surface=""
         className="overflow-x-auto px-3 py-2.5 text-foreground"
         style={{
           fontFamily: EDITOR_FONTS[fontId].stack,
