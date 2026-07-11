@@ -1,35 +1,43 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams } from "@tanstack/react-router";
-import type { Worktree } from "@shared/schemas";
-import { useResolvedDiff } from "@/hooks/diffs/useDiffs";
+import { useNavigate, useParams } from "@tanstack/react-router";
+import type { FileChange, Worktree } from "@shared/schemas";
+import { useResolvedDiff, useSetReviewed } from "@/hooks/diffs/useDiffs";
 import { useFullFileTree } from "@/hooks/diffs/useFullFileTree";
 import { useWorktrees } from "@/hooks/repos/useWorktrees";
 import { diffTitle } from "@shared/refExpr";
 import { DiffHeader } from "./DiffHeader";
 import { DiffTabBody } from "./DiffTabBody";
+import { loadDiffSession, saveDiffSession } from "./diffSession";
 import { EmptyChangesHint } from "./EmptyChangesHint";
 import { ErrorState } from "./ErrorState";
 import { FileTreePanel, type TreeMode } from "./FileTreePanel";
 import { LoadingSkeleton } from "./LoadingSkeleton";
 import { ResizeHandle } from "./ResizeHandle";
 import { TabStrip, type DiffStyle, type Tab } from "./TabStrip";
-import {
-  TREE_MAX,
-  TREE_MIN,
-  TREE_WIDTH_KEY,
-  readStoredTreeWidth,
-} from "./treeWidth";
+import { useDiffKeyboard } from "./useDiffKeyboard";
+import { TREE_MAX, TREE_MIN, TREE_WIDTH_KEY, readStoredTreeWidth } from "./treeWidth";
 
 export function DiffView() {
   const { repoId, diffId } = useParams({ from: "/repos/$repoId/diffs/$diffId" });
   const resolved = useResolvedDiff(repoId, diffId);
   const worktrees = useWorktrees(repoId);
+  const navigate = useNavigate();
+  const setReviewed = useSetReviewed();
 
-  const [tabs, setTabs] = useState<Tab[]>([]);
-  const [activePath, setActivePath] = useState<string | null>(null);
-  const [treeMode, setTreeMode] = useState<TreeMode>("changed");
+  // View state restores from the per-diff session (localStorage) so
+  // navigating away and back — or relaunching the app — lands exactly
+  // where the user left off.
+  const [session] = useState(() => loadDiffSession(repoId, diffId));
+  const [tabs, setTabs] = useState<Tab[]>(session?.tabs ?? []);
+  const [activePath, setActivePath] = useState<string | null>(session?.activePath ?? null);
+  const [treeMode, setTreeMode] = useState<TreeMode>(session?.treeMode ?? "changed");
+  const [treeVisible, setTreeVisible] = useState<boolean>(session?.treeVisible ?? true);
   const [treeWidth, setTreeWidth] = useState<number>(readStoredTreeWidth);
   const fullTree = useFullFileTree(repoId, diffId);
+
+  useEffect(() => {
+    saveDiffSession(repoId, diffId, { tabs, activePath, treeMode, treeVisible });
+  }, [repoId, diffId, tabs, activePath, treeMode, treeVisible]);
 
   // Drag-to-resize for the file-tree rail. Captures the rail's left
   // edge at mousedown so the new width is computed relative to it
@@ -71,18 +79,18 @@ export function DiffView() {
   // an extra IPC just for that label.
   const boundWorktree = useMemo<Worktree | null>(() => {
     if (!resolved.data?.diff.rightWorktreePath) return null;
-    return (
-      worktrees.data?.find((w) => w.path === resolved.data!.diff.rightWorktreePath) ?? null
-    );
+    return worktrees.data?.find((w) => w.path === resolved.data!.diff.rightWorktreePath) ?? null;
   }, [resolved.data, worktrees.data]);
+
+  const files = useMemo(() => resolved.data?.files ?? [], [resolved.data]);
 
   // Paths in the changed-files set route to the DiffEditor; everything
   // else from the full tree opens as a plain Editor.
-  const changedPaths = useMemo(() => {
-    const s = new Set<string>();
-    for (const f of resolved.data?.files ?? []) s.add(f.path);
-    return s;
-  }, [resolved.data]);
+  const fileByPath = useMemo(() => {
+    const m = new Map<string, FileChange>();
+    for (const f of files) m.set(f.path, f);
+    return m;
+  }, [files]);
 
   // Single click opens as preview (replaces any existing preview);
   // double click or starting to edit promotes the active tab to permanent.
@@ -128,27 +136,85 @@ export function DiffView() {
   // here to read; making them click to start the reading is friction.
   useEffect(() => {
     if (activePath !== null) return;
-    const files = resolved.data?.files ?? [];
     if (files.length === 0) return;
     const target = files.find((f) => !f.reviewed) ?? files[0];
     if (target) openFile(target.path, "preview");
-  }, [resolved.data, activePath, openFile]);
+  }, [files, activePath, openFile]);
 
   const closeTab = useCallback(
     (path: string) => {
-      setTabs((prev) => {
-        const idx = prev.findIndex((t) => t.path === path);
-        if (idx < 0) return prev;
-        const next = prev.toSpliced(idx, 1);
-        if (activePath === path) {
-          const fallback = next[idx] ?? next[idx - 1] ?? null;
-          setActivePath(fallback?.path ?? null);
-        }
-        return next;
-      });
+      const idx = tabs.findIndex((t) => t.path === path);
+      if (idx < 0) return;
+      const next = tabs.toSpliced(idx, 1);
+      setTabs(next);
+      if (activePath === path) {
+        const fallback = next[idx] ?? next[idx - 1] ?? null;
+        setActivePath(fallback?.path ?? null);
+      }
     },
-    [activePath],
+    [tabs, activePath],
   );
+
+  // ----- keyboard actions -------------------------------------------------
+
+  // Files after the active one (wrapping) that aren't reviewed yet; the
+  // reading order the review loop advances through.
+  const nextUnreviewedAfter = useCallback(
+    (fromPath: string | null): FileChange | null => {
+      if (files.length === 0) return null;
+      const idx = fromPath ? files.findIndex((f) => f.path === fromPath) : -1;
+      const ordered = [...files.slice(idx + 1), ...files.slice(0, Math.max(idx, 0))];
+      return ordered.find((f) => !f.reviewed && f.path !== fromPath) ?? null;
+    },
+    [files],
+  );
+
+  const stepTab = useCallback(
+    (delta: number) => {
+      if (tabs.length === 0) return;
+      const idx = tabs.findIndex((t) => t.path === activePath);
+      const next = tabs[(idx + delta + tabs.length) % tabs.length];
+      if (next) setActivePath(next.path);
+    },
+    [tabs, activePath],
+  );
+
+  useDiffKeyboard({
+    toggleReviewedAndAdvance: () => {
+      const active = activePath ? (fileByPath.get(activePath) ?? null) : null;
+      if (!active) return;
+      const marking = !active.reviewed;
+      setReviewed.mutate({ repoId, diffId, path: active.path, reviewed: marking });
+      if (marking) {
+        const next = nextUnreviewedAfter(active.path);
+        if (next) openFile(next.path, "preview");
+      }
+    },
+    jumpToNextUnreviewed: () => {
+      const next = nextUnreviewedAfter(activePath);
+      if (next) openFile(next.path, "preview");
+    },
+    nextTab: () => stepTab(1),
+    prevTab: () => stepTab(-1),
+    activateTabIndex: (i) => {
+      const tab = tabs[i];
+      if (tab) setActivePath(tab.path);
+    },
+    closeActiveTab: () => {
+      if (activePath === null) return false;
+      closeTab(activePath);
+      return true;
+    },
+    toggleDiffStyle: () => {
+      if (!activePath) return;
+      const tab = tabs.find((t) => t.path === activePath);
+      if (tab) setTabDiffStyle(activePath, tab.diffStyle === "split" ? "inline" : "split");
+    },
+    toggleTree: () => setTreeVisible((v) => !v),
+    goToDashboard: () => void navigate({ to: "/" }),
+  });
+
+  // -------------------------------------------------------------------------
 
   const diffName = resolved.data
     ? (resolved.data.diff.name ?? diffTitle(resolved.data.diff.left, resolved.data.diff.right))
@@ -157,6 +223,7 @@ export function DiffView() {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DiffHeader
+        repoId={repoId}
         diffName={diffName}
         diff={resolved.data?.diff ?? null}
         files={resolved.data?.files ?? null}
@@ -169,20 +236,24 @@ export function DiffView() {
           <ErrorState message={(resolved.error as Error).message} />
         ) : resolved.data ? (
           <>
-            <FileTreePanel
-              repoId={repoId}
-              diffId={diffId}
-              width={treeWidth}
-              files={resolved.data.files}
-              fullPaths={fullTree.data ?? null}
-              fullLoading={fullTree.isLoading}
-              mode={treeMode}
-              onModeChange={setTreeMode}
-              activePath={activePath}
-              onClick={(p) => openFile(p, "preview")}
-              onDoubleClick={(p) => openFile(p, "permanent")}
-            />
-            <ResizeHandle onMouseDown={startResize} />
+            {treeVisible ? (
+              <>
+                <FileTreePanel
+                  repoId={repoId}
+                  diffId={diffId}
+                  width={treeWidth}
+                  files={resolved.data.files}
+                  fullPaths={fullTree.data ?? null}
+                  fullLoading={fullTree.isLoading}
+                  mode={treeMode}
+                  onModeChange={setTreeMode}
+                  activePath={activePath}
+                  onClick={(p) => openFile(p, "preview")}
+                  onDoubleClick={(p) => openFile(p, "permanent")}
+                />
+                <ResizeHandle onMouseDown={startResize} />
+              </>
+            ) : null}
             <section className="flex min-w-0 flex-1 flex-col">
               <TabStrip
                 tabs={tabs}
@@ -199,10 +270,8 @@ export function DiffView() {
                     repoId={repoId}
                     diffId={diffId}
                     path={activePath}
-                    diffStyle={
-                      tabs.find((t) => t.path === activePath)?.diffStyle ?? "split"
-                    }
-                    isChanged={changedPaths.has(activePath)}
+                    diffStyle={tabs.find((t) => t.path === activePath)?.diffStyle ?? "split"}
+                    file={fileByPath.get(activePath) ?? null}
                     boundWorktree={boundWorktree}
                   />
                 ) : resolved.data.files.length === 0 ? (

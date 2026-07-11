@@ -1,4 +1,4 @@
-import type { Worktree } from "@shared/schemas";
+import type { FileChange, Worktree } from "@shared/schemas";
 import { DiffEditorBody } from "./DiffEditorBody";
 import { FileBrowseBody } from "./FileBrowseBody";
 import type { DiffStyle } from "./TabStrip";
@@ -8,24 +8,26 @@ export function DiffTabBody({
   diffId,
   path,
   diffStyle,
-  isChanged,
+  file,
   boundWorktree,
 }: {
   repoId: string;
   diffId: string;
   path: string;
   diffStyle: DiffStyle;
-  isChanged: boolean;
+  // The FileChange when this path is part of the diff; null for files
+  // opened from the full tree (they render as a plain read-only editor).
+  file: FileChange | null;
   boundWorktree: Worktree | null;
 }) {
-  if (!isChanged) {
+  if (!file) {
     return <FileBrowseBody repoId={repoId} diffId={diffId} path={path} />;
   }
   return (
     <DiffEditorBody
       repoId={repoId}
       diffId={diffId}
-      path={path}
+      file={file}
       diffStyle={diffStyle}
       boundWorktree={boundWorktree}
     />

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
-import type { Worktree } from "@shared/schemas";
+import { FileWarning, RefreshCcw } from "lucide-react";
+import type { FileChange, Worktree } from "@shared/schemas";
 import { useEditorSettings } from "@/hooks/config/useEditorSettings";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
+import { useReviewedSnapshot } from "@/hooks/diffs/useReviewedSnapshot";
+import { useSetReviewed } from "@/hooks/diffs/useDiffs";
 import { useWriteFile } from "@/hooks/diffs/useWriteFile";
 import { useTheme } from "@/hooks/ui/useTheme";
 import { languageForPath } from "@/lib/language";
@@ -16,21 +19,38 @@ type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 export function DiffEditorBody({
   repoId,
   diffId,
-  path,
+  file,
   diffStyle,
   boundWorktree,
 }: {
   repoId: string;
   diffId: string;
-  path: string;
+  file: FileChange;
   diffStyle: DiffStyle;
   boundWorktree: Worktree | null;
 }) {
   const { resolved } = useTheme();
   const editor = useEditorSettings();
-  const leftQ = useReadFile(repoId, diffId, path, "left");
+  const path = file.path;
+  // Renamed files keep their pre-rename content on the left side; the
+  // new path doesn't exist at the left ref, so reading it there would
+  // render the rename as a wholesale addition.
+  const leftPath = file.kind === "renamed" ? file.fromPath : path;
+  const leftQ = useReadFile(repoId, diffId, leftPath, "left");
   const rightQ = useReadFile(repoId, diffId, path, "right");
   const write = useWriteFile();
+  const setReviewed = useSetReviewed();
+
+  // "Since review" flips the diff's left side from the diff's base to
+  // the snapshot taken when the user marked the file reviewed, so the
+  // tab shows only what changed underneath them.
+  const [sinceReview, setSinceReview] = useState(false);
+  const snapshot = useReviewedSnapshot(repoId, diffId, path, sinceReview && file.needsReReview);
+  useEffect(() => {
+    // Re-marking reviewed clears needsReReview; drop back to the full
+    // diff instead of comparing the file against itself.
+    if (!file.needsReReview && sinceReview) setSinceReview(false);
+  }, [file.needsReReview, sinceReview]);
 
   // Treat the modified side as locally-owned once Monaco has it: external
   // refetches (after our own save) won't reset the user's cursor or
@@ -114,19 +134,41 @@ export function DiffEditorBody({
 
   const left = leftQ.data?.content ?? "";
   const right = localRight ?? rightQ.data?.content ?? "";
+
+  // Binary content has no meaningful text diff. numstat flags most
+  // cases (kind === "binary"); the NUL sniff catches untracked
+  // binaries, which never pass through numstat.
+  if (file.kind === "binary" || left.includes("\0") || right.includes("\0")) {
+    return <BinaryBody file={file} />;
+  }
+
+  const snapshotMissing =
+    sinceReview && snapshot.data !== undefined && snapshot.data.content === null;
+  const original = sinceReview && snapshot.data?.content != null ? snapshot.data.content : left;
   const language = languageForPath(path);
 
   const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;
   return (
     <div className="relative h-full w-full">
-      <SaveBadge state={saveState} editable={editable} worktreeName={liveWorktreeName} />
+      <div className="absolute right-3 top-2 z-10 flex items-center gap-1.5">
+        {file.needsReReview ? (
+          <ReviewDeltaControls
+            sinceReview={sinceReview}
+            snapshotMissing={snapshotMissing}
+            onToggle={() => setSinceReview((v) => !v)}
+            onMarkReviewed={() => setReviewed.mutate({ repoId, diffId, path, reviewed: true })}
+            markPending={setReviewed.isPending}
+          />
+        ) : null}
+        <SaveBadge state={saveState} editable={editable} worktreeName={liveWorktreeName} />
+      </div>
       {loading ? (
         <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
           Loading…
         </div>
       ) : null}
       <DiffEditor
-        original={left}
+        original={original}
         modified={right}
         language={language}
         theme={resolved === "dark" ? "monokai-pro" : "pierre-light"}
@@ -173,6 +215,76 @@ export function DiffEditorBody({
   );
 }
 
+// The amber "this moved underneath you" cluster: a toggle between the
+// full diff and `reviewed-snapshot ↔ current`, plus a one-click
+// re-mark that refreshes the snapshot and clears the flag.
+function ReviewDeltaControls({
+  sinceReview,
+  snapshotMissing,
+  onToggle,
+  onMarkReviewed,
+  markPending,
+}: {
+  sinceReview: boolean;
+  snapshotMissing: boolean;
+  onToggle: () => void;
+  onMarkReviewed: () => void;
+  markPending: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded bg-card/80 px-1.5 py-0.5 text-[10px] shadow-sm ring-1 ring-amber-500/40 backdrop-blur-sm">
+      <RefreshCcw className="size-3 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+      <span className="uppercase tracking-wide text-amber-700 dark:text-amber-300">
+        changed since review
+      </span>
+      <button
+        type="button"
+        onClick={onToggle}
+        className="rounded px-1.5 py-0.5 font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+        title={
+          sinceReview
+            ? "Show the full diff against the base again"
+            : "Compare against the version you marked reviewed, showing only what's new"
+        }
+      >
+        {sinceReview ? "Full diff" : "Since review"}
+      </button>
+      <button
+        type="button"
+        onClick={onMarkReviewed}
+        disabled={markPending}
+        className="rounded px-1.5 py-0.5 font-medium text-emerald-700 transition-colors hover:bg-muted dark:text-emerald-300"
+        title="Mark reviewed at the current content"
+      >
+        Mark reviewed
+      </button>
+      {snapshotMissing ? (
+        <span
+          className="text-muted-foreground/80"
+          title="The reviewed snapshot can't be recovered (it predates snapshot support or was pruned by git gc); showing the full diff."
+        >
+          snapshot unavailable
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function BinaryBody({ file }: { file: FileChange }) {
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="max-w-md text-center">
+        <FileWarning className="mx-auto size-6 text-muted-foreground/60" aria-hidden />
+        <h2 className="mt-3 text-sm font-medium text-foreground">Binary file</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span className="font-mono">{file.path}</span> changed, but binary content has no text
+          diff to show. You can still mark it reviewed from the file tree.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function SaveBadge({
   state,
   editable,
@@ -190,7 +302,7 @@ function SaveBadge({
   if (state === "idle") {
     return (
       <div
-        className="absolute right-3 top-2 z-10 inline-flex items-center gap-1.5 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm"
+        className="inline-flex items-center gap-1.5 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm"
         title={
           worktreeName
             ? `Edits write to the ${worktreeName} worktree's working tree.`
@@ -223,7 +335,7 @@ function SaveBadge({
   return (
     <div
       className={cn(
-        "absolute right-3 top-2 z-10 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide shadow-sm ring-1 ring-border backdrop-blur-sm",
+        "rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide shadow-sm ring-1 ring-border backdrop-blur-sm",
         cls,
       )}
     >

@@ -4,9 +4,7 @@ export type TreeNode =
   | { kind: "folder"; name: string; path: string; children: TreeNode[] }
   | { kind: "file"; name: string; path: string; file: FileChange | null };
 
-export type TreeRowInput =
-  | { kind: "changed"; file: FileChange }
-  | { kind: "plain"; path: string };
+export type TreeRowInput = { kind: "changed"; file: FileChange } | { kind: "plain"; path: string };
 
 export type TreeFolder = Extract<TreeNode, { kind: "folder" }>;
 export type TreeFile = Extract<TreeNode, { kind: "file" }>;

@@ -1,8 +1,10 @@
 import { Link } from "@tanstack/react-router";
+import { useQueries } from "@tanstack/react-query";
 import { FolderGit2, FolderOpen, GitBranch, Plus, Trash2 } from "lucide-react";
 import type { Diff, Repo } from "@shared/schemas";
 import {
   type DiffWithRepo,
+  resolvedDiffQueryOptions,
   useAllDiffs,
   useDeleteDiff,
   useDiffs,
@@ -15,6 +17,7 @@ import { formatRelativeTime } from "@/lib/relativeTime";
 import { tildify } from "@/lib/projectPaths";
 import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";
+import { clearDiffSession } from "./diff/diffSession";
 import { AppToolbar, SettingsButton, ToolbarActions } from "./AppToolbar";
 import { Button } from "./ui/button";
 
@@ -23,10 +26,19 @@ export function Dashboard() {
   const { openAddRepo } = useDialogs();
   const hasRepos = repos.length > 0;
   const all = useAllDiffs(repos);
+  const counts = useResolvedCounts(all.items);
 
+  // "In progress" = started but not finished. Before the resolve query
+  // lands we only know the persisted reviewed map, so a possibly-done
+  // diff sits in the band for a moment and settles once counts arrive.
   const inProgress = all.items
-    .filter((d) => reviewedCount(d.diff) > 0)
+    .filter(({ repo, diff }) => {
+      const c = counts.get(`${repo.id}:${diff.id}`);
+      if (!c) return reviewedCount(diff) > 0;
+      return c.reviewed > 0 && c.reviewed < c.total;
+    })
     .sort(byCreatedDesc);
+  const bandedIds = new Set(inProgress.map(({ repo, diff }) => `${repo.id}:${diff.id}`));
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -45,7 +57,7 @@ export function Dashboard() {
         {isLoading && !hasRepos ? null : hasRepos ? (
           <div className="mx-auto flex max-w-5xl flex-col gap-10 px-8 pt-4 pb-16">
             {inProgress.length > 0 ? <InProgressBand items={inProgress} /> : null}
-            <RepoSections repos={repos} />
+            <RepoSections repos={repos} bandedIds={bandedIds} />
           </div>
         ) : (
           <EmptyState onAddRepo={openAddRepo} />
@@ -53,6 +65,29 @@ export function Dashboard() {
       </main>
     </div>
   );
+}
+
+// Reviewed/total per diff, from the same resolve cache the cards use.
+// The dashboard resolves every diff anyway (each card shows a diffstat),
+// so this adds no extra IPC — it just makes the counts available where
+// band membership is decided.
+function useResolvedCounts(
+  items: DiffWithRepo[],
+): Map<string, { reviewed: number; total: number }> {
+  const queries = useQueries({
+    queries: items.map(({ repo, diff }) => resolvedDiffQueryOptions(repo.id, diff.id)),
+  });
+  const out = new Map<string, { reviewed: number; total: number }>();
+  queries.forEach((q, idx) => {
+    const item = items[idx];
+    if (!item || !q.data) return;
+    const files = q.data.files;
+    out.set(`${item.repo.id}:${item.diff.id}`, {
+      reviewed: files.filter((f) => f.reviewed).length,
+      total: files.length,
+    });
+  });
+  return out;
 }
 
 function BrandMark() {
@@ -86,24 +121,29 @@ function InProgressBand({ items }: { items: DiffWithRepo[] }) {
       </div>
       <div className="grid gap-5 [grid-template-columns:repeat(auto-fill,minmax(320px,1fr))]">
         {items.map((it) => (
-          <DiffCard key={`${it.repo.id}:${it.diff.id}`} repo={it.repo} diff={it.diff} showRepoName />
+          <DiffCard
+            key={`${it.repo.id}:${it.diff.id}`}
+            repo={it.repo}
+            diff={it.diff}
+            showRepoName
+          />
         ))}
       </div>
     </section>
   );
 }
 
-function RepoSections({ repos }: { repos: Repo[] }) {
+function RepoSections({ repos, bandedIds }: { repos: Repo[]; bandedIds: Set<string> }) {
   return (
     <div className="flex flex-col gap-12">
       {repos.map((repo) => (
-        <RepoSection key={repo.id} repo={repo} />
+        <RepoSection key={repo.id} repo={repo} bandedIds={bandedIds} />
       ))}
     </div>
   );
 }
 
-function RepoSection({ repo }: { repo: Repo }) {
+function RepoSection({ repo, bandedIds }: { repo: Repo; bandedIds: Set<string> }) {
   const { confirm, openNewDiff } = useDialogs();
   const removeRepo = useRemoveRepo();
   const diffs = useDiffs(repo.id);
@@ -122,12 +162,13 @@ function RepoSection({ repo }: { repo: Repo }) {
     });
   };
 
-  // Per-repo grid is the surface for diffs that haven't been touched
-  // yet. In-progress diffs live in the cross-repo band above so the
-  // resume target isn't buried under a repo header.
+  // Per-repo grid holds everything that isn't actively being reviewed:
+  // untouched diffs and completed ones. In-progress diffs live in the
+  // cross-repo band above so the resume target isn't buried under a
+  // repo header.
   const all = diffs.data ?? [];
   const items = all
-    .filter((d) => reviewedCount(d) === 0)
+    .filter((d) => !bandedIds.has(`${repo.id}:${d.id}`))
     .sort((a, b) => b.createdAt - a.createdAt);
   const hasOnlyBandedDiffs = all.length > 0 && items.length === 0;
 
@@ -203,8 +244,11 @@ function DiffCard({
 
   const refLeft = labelForRef(diff.left);
   const refRight = labelForRef(diff.right);
-  const reviewed = reviewedCount(diff);
   const files = resolved.data?.files ?? null;
+  // Prefer the resolved files' reviewed flags over the persisted map's
+  // key count: the map can carry marks for paths that have since left
+  // the diff, which would overcount (e.g. "5/3 reviewed").
+  const reviewed = files ? files.filter((f) => f.reviewed).length : reviewedCount(diff);
   const totalFiles = files ? files.length : null;
   const additions = files ? files.reduce((a, f) => a + f.additions, 0) : 0;
   const deletions = files ? files.reduce((a, f) => a + f.deletions, 0) : 0;
@@ -219,6 +263,7 @@ function DiffCard({
       destructive: true,
       onConfirm: async () => {
         await deleteDiff.mutateAsync({ repoId: repo.id, diffId: diff.id });
+        clearDiffSession(repo.id, diff.id);
         notify("Diff deleted", diff.name);
       },
     });
@@ -360,20 +405,12 @@ function RefPairChip({ left, right }: { left: string; right: string }) {
   );
 }
 
-function ProgressLabel({
-  reviewed,
-  total,
-}: {
-  reviewed: number;
-  total: number | null;
-}) {
+function ProgressLabel({ reviewed, total }: { reviewed: number; total: number | null }) {
   if (total === null) {
     // Resolve hasn't landed yet; show the absolute reviewed count if
     // any, otherwise nothing (placeholder lives in DiffMetrics).
     if (reviewed === 0) return <span className="text-muted-foreground/50">Not started</span>;
-    return (
-      <span className="text-emerald-600 dark:text-emerald-400">{reviewed} reviewed</span>
-    );
+    return <span className="text-emerald-600 dark:text-emerald-400">{reviewed} reviewed</span>;
   }
   if (total === 0) return <span className="text-muted-foreground/50">no changes</span>;
   const done = reviewed === total;
@@ -389,13 +426,7 @@ function ProgressLabel({
   );
 }
 
-function ProgressBar({
-  reviewed,
-  total,
-}: {
-  reviewed: number;
-  total: number | null;
-}) {
+function ProgressBar({ reviewed, total }: { reviewed: number; total: number | null }) {
   // Hairline track for not-started so cards still have a bottom edge;
   // emerald accent fill scales with the reviewed fraction once the
   // resolve query lands. Pre-resolve we can't compute a percent, so

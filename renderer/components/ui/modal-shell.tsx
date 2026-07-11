@@ -29,6 +29,9 @@ export function ModalShell({
   return (
     <div
       role="presentation"
+      // Global shortcut handlers (diff view, app-level ⌘W) check for
+      // this attribute and stand down while any modal is open.
+      data-modal=""
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

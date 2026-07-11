@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme } from "electron";
+import { app, BrowserWindow, Menu, nativeTheme } from "electron";
 import path from "node:path";
 import { windowContract } from "@shared/ipc/modules/window";
 import { ensurePReviewerRoot } from "./app/bootstrap";
@@ -8,6 +8,25 @@ import { registerIpcHandlers } from "./ipc";
 import { broadcast } from "./ipc/register";
 
 registerIpcHandlers();
+
+// Standard macOS menu, except Close Window moves to ⌘⇧W. The default
+// ⌘W accelerator would fire at the menu level before the renderer ever
+// sees the key, and the diff view uses ⌘W to close the active tab
+// (closing the window itself when no tab is open — see the renderer's
+// app-level fallback).
+function installApplicationMenu(): void {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    { role: "appMenu" },
+    {
+      label: "File",
+      submenu: [{ role: "close", accelerator: "Shift+CmdOrCtrl+W" }],
+    },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -59,6 +78,7 @@ app.on("ready", async () => {
   // Dev launches start from the terminal and already have the right one.
   if (app.isPackaged) await applyUserShellPath();
   await ensurePReviewerRoot();
+  installApplicationMenu();
   createWindow();
 });
 

@@ -48,14 +48,23 @@ export function useDiff(repoId: string, diffId: string) {
   });
 }
 
-export function useResolvedDiff(repoId: string | null, diffId: string | null) {
-  return useQuery({
-    queryKey: queryKeys.resolvedDiff(repoId ?? "", diffId ?? ""),
-    queryFn: () => window.api.diffs.resolve({ repoId: repoId!, diffId: diffId! }),
-    enabled: repoId !== null && diffId !== null,
+// Shared options so every observer of a resolved diff (DiffView, cards,
+// dashboard progress bands) hits the same cache entry with identical
+// semantics.
+export function resolvedDiffQueryOptions(repoId: string, diffId: string) {
+  return {
+    queryKey: queryKeys.resolvedDiff(repoId, diffId),
+    queryFn: () => window.api.diffs.resolve({ repoId, diffId }),
     // External git changes (terminal commits, branch switches) won't
     // trigger a refetch; mutations explicitly invalidate this key.
     staleTime: Number.POSITIVE_INFINITY,
+  } as const;
+}
+
+export function useResolvedDiff(repoId: string | null, diffId: string | null) {
+  return useQuery({
+    ...resolvedDiffQueryOptions(repoId ?? "", diffId ?? ""),
+    enabled: repoId !== null && diffId !== null,
   });
 }
 
@@ -116,8 +125,13 @@ export function useSetReviewed() {
   return useMutation<Diff, Error, SetReviewedArgs>({
     mutationFn: (args) => window.api.diffs.setReviewed(args),
     meta: { errorTitle: "Couldn't update review state" },
-    onSuccess: (diff) => {
+    onSuccess: (diff, args) => {
       invalidateResolvedDiff(queryClient, diff.repoId, diff.id);
+      // Re-marking updates the stored snapshot hash; drop the cached
+      // snapshot content so the "since review" view reads the new one.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.reviewedSnapshot(diff.repoId, diff.id, args.path),
+      });
     },
   });
 }
