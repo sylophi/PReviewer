@@ -52,12 +52,15 @@ export function DiffEditorBody({
     if (!file.needsReReview && sinceReview) setSinceReview(false);
   }, [file.needsReReview, sinceReview]);
 
-  // Treat the modified side as locally-owned once Monaco has it: external
-  // refetches (after our own save) won't reset the user's cursor or
-  // pending edits. Reset whenever the path changes (component remounts
-  // via the key prop in DiffView, so this is a fresh useState on each).
+  // Treat the modified side as locally-owned while the user has edits
+  // in flight: refetches won't reset their cursor or pending changes.
+  // When the buffer is clean, though, refetched content is adopted, so
+  // external writers (an agent editing the working tree, a terminal
+  // `git checkout`) show up instead of pinning the first cached read.
   const [localRight, setLocalRight] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const saveStateRef = useRef<SaveState>("idle");
+  saveStateRef.current = saveState;
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // `editable` is sourced from the IPC read result and may flip after
@@ -67,8 +70,18 @@ export function DiffEditorBody({
   const editableRef = useRef(false);
 
   useEffect(() => {
-    if (localRight === null && rightQ.data !== undefined) {
-      setLocalRight(rightQ.data.content ?? "");
+    if (rightQ.data === undefined) return;
+    const fetched = rightQ.data.content ?? "";
+    if (localRight === null) {
+      setLocalRight(fetched);
+      return;
+    }
+    // Clean buffer + different on-disk content = an external change;
+    // adopt it. Dirty/saving buffers keep local ownership so a refetch
+    // racing a keystroke can't eat the user's edit.
+    const clean = saveStateRef.current === "idle" || saveStateRef.current === "saved";
+    if (clean && fetched !== localRight) {
+      setLocalRight(fetched);
     }
   }, [rightQ.data, localRight]);
 
@@ -149,76 +162,83 @@ export function DiffEditorBody({
 
   const liveWorktreeName = boundWorktree ? lastSegment(boundWorktree.path) : null;
   return (
-    <div className="relative h-full w-full">
-      <div className="absolute right-3 top-2 z-10 flex items-center gap-1.5">
-        {file.needsReReview ? (
-          <ReviewDeltaControls
-            sinceReview={sinceReview}
-            snapshotMissing={snapshotMissing}
-            onToggle={() => setSinceReview((v) => !v)}
-            onMarkReviewed={() => setReviewed.mutate({ repoId, diffId, path, reviewed: true })}
-            markPending={setReviewed.isPending}
-          />
-        ) : null}
-        <SaveBadge state={saveState} editable={editable} worktreeName={liveWorktreeName} />
-      </div>
-      {loading ? (
-        <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
-          Loading…
-        </div>
+    <div className="flex h-full w-full flex-col">
+      {file.needsReReview ? (
+        <ReviewDeltaBanner
+          sinceReview={sinceReview}
+          snapshotMissing={snapshotMissing}
+          onToggle={() => setSinceReview((v) => !v)}
+          onMarkReviewed={() => setReviewed.mutate({ repoId, diffId, path, reviewed: true })}
+          markPending={setReviewed.isPending}
+        />
       ) : null}
-      <DiffEditor
-        original={original}
-        modified={right}
-        language={language}
-        theme={resolved === "dark" ? "monokai-pro" : "pierre-light"}
-        onMount={onMount}
-        options={{
-          readOnly: !editable,
-          renderSideBySide: diffStyle === "split",
-          // Without this, Monaco silently collapses split to inline when
-          // the editor width drops below an internal threshold, which
-          // made the Split/Unified toggle feel broken at narrow widths.
-          useInlineViewWhenSpaceIsLimited: false,
-          originalEditable: false,
-          automaticLayout: true,
-          fontSize: editor.fontSize,
-          lineHeight: editor.lineHeight,
-          fontFamily: editor.fontFamily,
-          fontLigatures: editor.fontLigatures,
-          minimap: { enabled: false },
-          // Keep the diff editor's hunk overview ruler on (the strip
-          // that shows where changes live in the file and lets you
-          // click to jump to them — actually useful for review). Drop
-          // the per-pane decoration rulers (selection highlights,
-          // search match positions), which were the redundant ones
-          // next to the scrollbar.
-          overviewRulerLanes: 0,
-          overviewRulerBorder: false,
-          scrollBeyondLastLine: false,
-          wordWrap: "off",
-          renderWhitespace: "none",
-          guides: { indentation: false },
-          diffWordWrap: "off",
-          // Tighten the gutter. Default reserves space for 5-digit line
-          // numbers + a glyph margin + a folding column, ~70px total.
-          // Folding is redundant in a diff view (Monaco already
-          // collapses unchanged hunks); the glyph margin (breakpoints,
-          // error markers) is unused here.
-          glyphMargin: false,
-          folding: false,
-          lineNumbersMinChars: 3,
-          lineDecorationsWidth: 4,
-        }}
-      />
+      <div className="relative min-h-0 w-full flex-1">
+        <div className="absolute right-3 top-2 z-10">
+          <SaveBadge state={saveState} editable={editable} worktreeName={liveWorktreeName} />
+        </div>
+        {loading ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground">
+            Loading…
+          </div>
+        ) : null}
+        <DiffEditor
+          original={original}
+          modified={right}
+          language={language}
+          theme={resolved === "dark" ? "monokai-pro" : "pierre-light"}
+          onMount={onMount}
+          options={{
+            readOnly: !editable,
+            renderSideBySide: diffStyle === "split",
+            // Without this, Monaco silently collapses split to inline when
+            // the editor width drops below an internal threshold, which
+            // made the Split/Unified toggle feel broken at narrow widths.
+            useInlineViewWhenSpaceIsLimited: false,
+            originalEditable: false,
+            automaticLayout: true,
+            fontSize: editor.fontSize,
+            lineHeight: editor.lineHeight,
+            fontFamily: editor.fontFamily,
+            fontLigatures: editor.fontLigatures,
+            minimap: { enabled: false },
+            // Keep the diff editor's hunk overview ruler on (the strip
+            // that shows where changes live in the file and lets you
+            // click to jump to them — actually useful for review). Drop
+            // the per-pane decoration rulers (selection highlights,
+            // search match positions), which were the redundant ones
+            // next to the scrollbar.
+            overviewRulerLanes: 0,
+            overviewRulerBorder: false,
+            scrollBeyondLastLine: false,
+            wordWrap: "off",
+            renderWhitespace: "none",
+            guides: { indentation: false },
+            diffWordWrap: "off",
+            // Tighten the gutter. Default reserves space for 5-digit line
+            // numbers + a glyph margin + a folding column, ~70px total.
+            // Folding is redundant in a diff view (Monaco already
+            // collapses unchanged hunks); the glyph margin (breakpoints,
+            // error markers) is unused here.
+            glyphMargin: false,
+            folding: false,
+            lineNumbersMinChars: 3,
+            lineDecorationsWidth: 4,
+            // The revert-arrows gutter between the panes is authoring UI
+            // (copy hunks right-to-left); in a read-mostly review surface
+            // it's a dead ~40px column.
+            renderGutterMenu: false,
+          }}
+        />
+      </div>
     </div>
   );
 }
 
-// The amber "this moved underneath you" cluster: a toggle between the
-// full diff and `reviewed-snapshot ↔ current`, plus a one-click
-// re-mark that refreshes the snapshot and clears the flag.
-function ReviewDeltaControls({
+// The amber "this moved underneath you" strip above the editor: a
+// toggle between the full diff and `reviewed-snapshot ↔ current`, plus
+// a one-click re-mark that refreshes the snapshot and clears the flag.
+// A banner (not a floating overlay) so it never covers code.
+function ReviewDeltaBanner({
   sinceReview,
   snapshotMissing,
   onToggle,
@@ -232,40 +252,41 @@ function ReviewDeltaControls({
   markPending: boolean;
 }) {
   return (
-    <div className="flex items-center gap-1 rounded bg-card/80 px-1.5 py-0.5 text-[10px] shadow-sm ring-1 ring-amber-500/40 backdrop-blur-sm">
+    <div className="flex shrink-0 items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px]">
       <RefreshCcw className="size-3 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-      <span className="uppercase tracking-wide text-amber-700 dark:text-amber-300">
-        changed since review
+      <span className="font-medium text-amber-700 dark:text-amber-300">
+        Changed since your review
       </span>
+      {snapshotMissing ? (
+        <span
+          className="text-muted-foreground"
+          title="The reviewed snapshot can't be recovered (it predates snapshot support or was pruned by git gc); showing the full diff."
+        >
+          — snapshot unavailable, showing the full diff
+        </span>
+      ) : null}
+      <div className="flex-1" />
       <button
         type="button"
         onClick={onToggle}
-        className="rounded px-1.5 py-0.5 font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
+        className="rounded border border-amber-500/30 px-2 py-0.5 font-medium text-foreground/80 transition-colors hover:bg-amber-500/15 hover:text-foreground"
         title={
           sinceReview
             ? "Show the full diff against the base again"
             : "Compare against the version you marked reviewed, showing only what's new"
         }
       >
-        {sinceReview ? "Full diff" : "Since review"}
+        {sinceReview ? "Show full diff" : "Show what's new"}
       </button>
       <button
         type="button"
         onClick={onMarkReviewed}
         disabled={markPending}
-        className="rounded px-1.5 py-0.5 font-medium text-emerald-700 transition-colors hover:bg-muted dark:text-emerald-300"
+        className="rounded border border-emerald-500/30 px-2 py-0.5 font-medium text-emerald-700 transition-colors hover:bg-emerald-500/15 dark:text-emerald-300"
         title="Mark reviewed at the current content"
       >
         Mark reviewed
       </button>
-      {snapshotMissing ? (
-        <span
-          className="text-muted-foreground/80"
-          title="The reviewed snapshot can't be recovered (it predates snapshot support or was pruned by git gc); showing the full diff."
-        >
-          snapshot unavailable
-        </span>
-      ) : null}
     </div>
   );
 }

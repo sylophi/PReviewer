@@ -55,9 +55,12 @@ export function resolvedDiffQueryOptions(repoId: string, diffId: string) {
   return {
     queryKey: queryKeys.resolvedDiff(repoId, diffId),
     queryFn: () => window.api.diffs.resolve({ repoId, diffId }),
-    // External git changes (terminal commits, branch switches) won't
-    // trigger a refetch; mutations explicitly invalidate this key.
+    // Fresh forever between events we control (mount, mutation
+    // invalidations) — but re-run on window focus, because coming back
+    // from the terminal or an agent session is exactly when the
+    // working tree has moved and needs-re-review flags must update.
     staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: "always",
   } as const;
 }
 

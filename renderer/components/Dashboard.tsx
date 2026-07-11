@@ -176,11 +176,14 @@ function RepoSection({ repo, bandedIds }: { repo: Repo; bandedIds: Set<string> }
     <section>
       <div className="group/repo flex items-baseline justify-between gap-3 pb-1">
         <div className="flex min-w-0 items-baseline gap-3">
-          <h2 className="truncate text-base font-semibold tracking-tight text-foreground">
+          {/* Name wins the space fight: without shrink-0 the (hidden
+              until hover) path span squeezes short names into "fixtu…"
+              whenever the path is long. */}
+          <h2 className="max-w-[60%] shrink-0 truncate text-base font-semibold tracking-tight text-foreground">
             {repo.name}
           </h2>
           <span
-            className="truncate font-mono text-xs text-muted-foreground/60 opacity-0 transition-opacity group-hover/repo:opacity-100"
+            className="min-w-0 truncate font-mono text-xs text-muted-foreground/60 opacity-0 transition-opacity group-hover/repo:opacity-100"
             title={repo.path}
           >
             {tildify(repo.path)}
