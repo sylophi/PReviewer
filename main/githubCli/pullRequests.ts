@@ -2,10 +2,7 @@
 // through zod so a shape change in gh becomes a loud error instead of
 // a silent undefined downstream.
 import { z } from "zod";
-import {
-  type PullRequestSummary,
-  PullRequestSummarySchema,
-} from "@shared/schemas";
+import { type PullRequestSummary, PullRequestSummarySchema } from "@shared/schemas";
 import { runFile } from "./exec";
 import { ensureReady } from "./readiness";
 

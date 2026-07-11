@@ -22,8 +22,7 @@ export function useGlobalConfigPatch() {
   const queryClient = useQueryClient();
   return useMutation<void, Error, Partial<GlobalConfig>>({
     mutationFn: async (patch) => {
-      const current =
-        queryClient.getQueryData<GlobalConfig>(queryKeys.globalConfig()) ?? {};
+      const current = queryClient.getQueryData<GlobalConfig>(queryKeys.globalConfig()) ?? {};
       await window.api.globalConfig.write({ ...current, ...patch });
     },
     meta: { errorTitle: "Couldn't save settings" },

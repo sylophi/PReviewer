@@ -39,9 +39,7 @@ export function Settings() {
         >
           <ArrowLeft />
         </Link>
-        <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">
-          Settings
-        </h1>
+        <h1 className="min-w-0 shrink truncate text-sm font-semibold text-foreground">Settings</h1>
       </AppToolbar>
 
       <main className="min-h-0 flex-1 overflow-y-auto">
@@ -102,13 +100,7 @@ export function Settings() {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">
       <SectionHeading>{title}</SectionHeading>

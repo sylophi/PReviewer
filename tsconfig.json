@@ -21,7 +21,6 @@
     "erasableSyntaxOnly": true,
     "noEmit": true,
     "sourceMap": true,
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./renderer/*"],
       "@shared/*": ["./shared/*"]
@@ -31,6 +30,7 @@
     "main/**/*",
     "renderer/**/*",
     "shared/**/*",
+    "scripts/**/*.ts",
     "forge.config.ts",
     "forge.env.d.ts",
     "vite.*.config.ts"

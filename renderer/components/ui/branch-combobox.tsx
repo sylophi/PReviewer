@@ -54,8 +54,7 @@ export function BranchCombobox({
   }
 
   const trimmedQuery = query.trim();
-  const showCustom =
-    trimmedQuery.length > 0 && !all.some((b) => b.name === trimmedQuery);
+  const showCustom = trimmedQuery.length > 0 && !all.some((b) => b.name === trimmedQuery);
 
   return (
     <Combobox.Root
@@ -86,29 +85,16 @@ export function BranchCombobox({
           className,
         )}
       >
-        <span
-          className={cn("flex-1 truncate text-left", !value && "text-muted-foreground/70")}
-        >
+        <span className={cn("flex-1 truncate text-left", !value && "text-muted-foreground/70")}>
           <Combobox.Value placeholder={placeholder ?? "Pick a branch…"} />
         </span>
-        <ChevronsUpDown
-          aria-hidden
-          className="size-3.5 shrink-0 text-muted-foreground/60"
-        />
+        <ChevronsUpDown aria-hidden className="size-3.5 shrink-0 text-muted-foreground/60" />
       </Combobox.Trigger>
       <Combobox.Portal>
-        <Combobox.Positioner
-          sideOffset={4}
-          side="bottom"
-          align="start"
-          className="z-50"
-        >
+        <Combobox.Positioner sideOffset={4} side="bottom" align="start" className="z-50">
           <Combobox.Popup className="flex max-h-72 w-(--anchor-width) flex-col overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md">
             <div className="flex items-center gap-2 border-b border-border px-3">
-              <Search
-                aria-hidden
-                className="size-3.5 shrink-0 text-muted-foreground/60"
-              />
+              <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground/60" />
               <Combobox.Input
                 placeholder="Search branches…"
                 className="flex-1 bg-transparent py-2 font-mono text-sm outline-none placeholder:font-sans placeholder:text-muted-foreground"

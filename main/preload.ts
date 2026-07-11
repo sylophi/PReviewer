@@ -1,15 +1,6 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge } from "electron";
-import {
-  dialog,
-  diffs,
-  fs,
-  gh,
-  globalConfig,
-  repos,
-  runtime,
-  windowApi,
-} from "@shared/ipc/client";
+import { dialog, diffs, fs, gh, globalConfig, repos, runtime, windowApi } from "@shared/ipc/client";
 
 // The contract-driven IPC layer (see shared/ipc/) autogenerates the
 // per-method calls + handler typings. This file just stitches the

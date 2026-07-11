@@ -25,11 +25,7 @@ export function usePullRequests(repoId: string | null) {
 
 export function useCreateDiffFromPullRequest() {
   const queryClient = useQueryClient();
-  return useMutation<
-    Diff,
-    Error,
-    { repoId: string; number: number; rightWorktreePath?: string }
-  >({
+  return useMutation<Diff, Error, { repoId: string; number: number; rightWorktreePath?: string }>({
     mutationFn: (input) => window.api.diffs.createFromPullRequest(input),
     meta: { errorTitle: "Couldn't open PR" },
     onSuccess: (diff) => invalidateDiffs(queryClient, diff.repoId),

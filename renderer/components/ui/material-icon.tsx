@@ -1,10 +1,6 @@
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/ui/useTheme";
-import {
-  iconUrl,
-  resolveFileIcon,
-  resolveFolderIcon,
-} from "@/lib/materialIcons";
+import { iconUrl, resolveFileIcon, resolveFolderIcon } from "@/lib/materialIcons";
 
 interface MaterialIconProps {
   name: string;
@@ -13,18 +9,11 @@ interface MaterialIconProps {
   className?: string;
 }
 
-export function MaterialIcon({
-  name,
-  kind,
-  expanded = false,
-  className,
-}: MaterialIconProps) {
+export function MaterialIcon({ name, kind, expanded = false, className }: MaterialIconProps) {
   const { resolved } = useTheme();
   const light = resolved === "light";
   const iconName =
-    kind === "file"
-      ? resolveFileIcon(name, light)
-      : resolveFolderIcon(name, expanded);
+    kind === "file" ? resolveFileIcon(name, light) : resolveFolderIcon(name, expanded);
   return (
     <img
       src={iconUrl(iconName)}

@@ -138,9 +138,7 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
     if (!selectedWorktree) return;
     setLeft((prev) => {
       if (prev.kind !== "branch" || prev.name !== "") return prev;
-      return selectedWorktree.branch
-        ? { kind: "branch", name: selectedWorktree.branch }
-        : prev;
+      return selectedWorktree.branch ? { kind: "branch", name: selectedWorktree.branch } : prev;
     });
     setRight((prev) => {
       if (prev.kind !== "branch" || prev.name !== "") return prev;
@@ -162,9 +160,7 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
       left: leftRef,
       right: rightRef,
       ...(trimmedName.length > 0 ? { name: trimmedName } : {}),
-      ...(carryWorktree && selectedWorktree
-        ? { rightWorktreePath: selectedWorktree.path }
-        : {}),
+      ...(carryWorktree && selectedWorktree ? { rightWorktreePath: selectedWorktree.path } : {}),
     });
     notify("Diff created", created.name);
     onClose();
@@ -453,13 +449,7 @@ function ValueRow({ children }: { children: React.ReactNode }) {
   return <div className="flex min-h-[36px] items-center gap-2">{children}</div>;
 }
 
-function ResolvedHint({
-  children,
-  muted = false,
-}: {
-  children: React.ReactNode;
-  muted?: boolean;
-}) {
+function ResolvedHint({ children, muted = false }: { children: React.ReactNode; muted?: boolean }) {
   return (
     <div className={cn("text-sm", muted ? "text-muted-foreground/60" : "text-muted-foreground")}>
       {children}
@@ -507,9 +497,7 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
       {
         repoId,
         number,
-        ...(carryWorktree && selectedWorktree
-          ? { rightWorktreePath: selectedWorktree.path }
-          : {}),
+        ...(carryWorktree && selectedWorktree ? { rightWorktreePath: selectedWorktree.path } : {}),
       },
       {
         onSuccess: (diff) => {
@@ -549,9 +537,9 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
             onChange={setWorktreePath}
           />
           <p className="text-xs leading-relaxed text-muted-foreground/70">
-            PR contents are the same regardless of which worktree you pick. This only chooses
-            where git commands run, and where edits would land if you later check the PR branch
-            out yourself. PReviewer never checks anything out for you.
+            PR contents are the same regardless of which worktree you pick. This only chooses where
+            git commands run, and where edits would land if you later check the PR branch out
+            yourself. PReviewer never checks anything out for you.
           </p>
         </div>
       ) : null}
@@ -598,9 +586,7 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
                   </Badge>
                   <div className="min-w-0 flex-1">
                     <div className="flex min-w-0 items-baseline gap-2 text-sm">
-                      <span className="tabular shrink-0 text-muted-foreground">
-                        #{pr.number}
-                      </span>
+                      <span className="tabular shrink-0 text-muted-foreground">#{pr.number}</span>
                       <span className="truncate font-medium">{pr.title}</span>
                     </div>
                     <div className="truncate font-mono text-xs text-muted-foreground">
@@ -693,7 +679,7 @@ function CommitPicker({
           <option value="">Recent commits…</option>
           {recentCommits.map((c) => (
             <option key={c.hash} value={c.hash}>
-              {c.shortHash}  {c.subject}
+              {c.shortHash} {c.subject}
             </option>
           ))}
         </select>
