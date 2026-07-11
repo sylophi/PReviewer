@@ -29,7 +29,7 @@ Three things it does well, in order of importance:
 
 3. **In-place editing and inline comments.** When the right side of a diff is the live working tree, you can edit it; changes debounce to disk so you can verify them in your terminal. Inline line comments draft locally and post to the PR as a single GitHub review when you submit. Non-PR diffs (agent work, local branch comparisons) keep comments as private notes attached to the diff.
 
-It deliberately does not have: a source control panel, a terminal, an extensions marketplace, a debugger, a settings page of any depth, refactor menus, code actions, rename-symbol, quick-fixes, snippets, formatters, or any other surface that does not directly serve "read this diff and form an opinion."
+It deliberately does not have: a source control panel, a terminal, an extensions marketplace, a debugger, refactor menus, code actions, rename-symbol, quick-fixes, snippets, formatters, or any other surface that does not directly serve "read this diff and form an opinion." Settings exist but stay scoped to how code renders and how diffs compare (font, editor rendering, diff behavior) — the knobs a reviewer expects from a real editor, not VS Code's settings sprawl.
 
 ## Brand Personality
 
@@ -92,7 +92,7 @@ v0.1 inverts this: it is an editor whose only mode is diff. Restraint applies to
 - Reading existing PR comments alongside the diff.
 - Multi-tsconfig / monorepo project resolution beyond the obvious case.
 - Review approval state (approve / request changes / comment-only). Submit posts comments; approval state stays on GH.
-- Anything resembling a settings page beyond theme.
+- Settings beyond theme, font, editor rendering, and diff behavior (no keybinding editor, no per-language config, no settings sync).
 - Search across all files in a diff or repo (we have `@pierre/diffs`-style file path search from v0, that's enough).
 - Side-by-side multiple-diff comparison.
 

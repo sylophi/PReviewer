@@ -1,17 +1,26 @@
 import { ArrowLeft, Minus, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import type { EditorFontId, Theme } from "@shared/schemas";
-import { EDITOR_FONT_SIZE_MAX, EDITOR_FONT_SIZE_MIN } from "@shared/schemas";
+import type { EditorFontId, EditorFontWeight, EditorWhitespace, Theme } from "@shared/schemas";
+import {
+  EDITOR_FONT_SIZE_MAX,
+  EDITOR_FONT_SIZE_MIN,
+  EDITOR_LINE_HEIGHT_MAX,
+  EDITOR_LINE_HEIGHT_MIN,
+} from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 import {
   DEFAULT_EDITOR_FONT,
   DEFAULT_EDITOR_FONT_SIZE,
+  DEFAULT_EDITOR_FONT_WEIGHT,
+  DEFAULT_EDITOR_LINE_HEIGHT,
   EDITOR_FONTS,
-  editorLineHeight,
+  editorLineHeightPx,
+  resolveFontStack,
 } from "@/lib/editorFonts";
 import { cn, dragRegion, focusRing } from "@/lib/utils";
 import { AppToolbar } from "../AppToolbar";
 import { buttonVariants } from "../ui/button";
+import { Input } from "../ui/form-controls";
 import { SectionHeading } from "../ui/section-heading";
 import { Segmented } from "../ui/segmented";
 
@@ -22,7 +31,21 @@ export function Settings() {
   const theme: Theme = config?.theme ?? "system";
   const fontId: EditorFontId = config?.editorFont ?? DEFAULT_EDITOR_FONT;
   const fontSize = config?.editorFontSize ?? DEFAULT_EDITOR_FONT_SIZE;
+  const fontWeight: EditorFontWeight = config?.editorFontWeight ?? DEFAULT_EDITOR_FONT_WEIGHT;
+  const lineHeight = config?.editorLineHeight ?? DEFAULT_EDITOR_LINE_HEIGHT;
   const ligatures = config?.editorLigatures ?? false;
+
+  const wordWrap = config?.editorWordWrap ?? false;
+  const lineNumbers = config?.editorLineNumbers ?? true;
+  const minimap = config?.editorMinimap ?? false;
+  const indentGuides = config?.editorIndentGuides ?? false;
+  const whitespace: EditorWhitespace = config?.editorWhitespace ?? "none";
+  const stickyScroll = config?.editorStickyScroll ?? false;
+  const tabSize = config?.editorTabSize ?? 4;
+
+  const ignoreTrimWhitespace = config?.diffIgnoreTrimWhitespace ?? true;
+  const collapseUnchanged = config?.diffCollapseUnchanged ?? false;
+  const showMoves = config?.diffShowMoves ?? false;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -59,7 +82,7 @@ export function Settings() {
             </Row>
           </Section>
 
-          <Section title="Editor">
+          <Section title="Font">
             <Row label="Font">
               <Segmented
                 label="Editor font"
@@ -71,26 +94,159 @@ export function Settings() {
                 }))}
               />
             </Row>
+            {fontId === "custom" ? (
+              <Row label="Font family" hint="Any installed monospace family, e.g. Fira Code.">
+                <Input
+                  type="text"
+                  defaultValue={config?.editorCustomFontFamily ?? ""}
+                  placeholder="Font family name"
+                  className="w-56 font-mono"
+                  onBlur={(e) => patch.mutate({ editorCustomFontFamily: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      patch.mutate({ editorCustomFontFamily: e.currentTarget.value });
+                    }
+                  }}
+                />
+              </Row>
+            ) : null}
             <Row label="Font size">
               <Stepper
                 value={fontSize}
                 min={EDITOR_FONT_SIZE_MIN}
                 max={EDITOR_FONT_SIZE_MAX}
+                format={(v) => `${v}px`}
                 onChange={(next) => patch.mutate({ editorFontSize: next })}
               />
             </Row>
-            <Row label="Ligatures" hint="Combine ->, =>, !== into single glyphs.">
+            <Row label="Font weight" hint="Variable fonts render the exact weight.">
               <Segmented
+                label="Font weight"
+                value={fontWeight}
+                onChange={(next) => patch.mutate({ editorFontWeight: next })}
+                options={(["300", "400", "450", "500", "600"] as const).map((w) => ({
+                  value: w,
+                  label: w,
+                }))}
+              />
+            </Row>
+            <Row label="Line height">
+              <Stepper
+                value={lineHeight}
+                min={EDITOR_LINE_HEIGHT_MIN}
+                max={EDITOR_LINE_HEIGHT_MAX}
+                step={0.1}
+                format={(v) => `${v.toFixed(1)}×`}
+                onChange={(next) => patch.mutate({ editorLineHeight: Math.round(next * 10) / 10 })}
+              />
+            </Row>
+            <Row label="Ligatures" hint="Combine ->, =>, !== into single glyphs.">
+              <Toggle
                 label="Ligatures"
-                value={ligatures ? "on" : "off"}
-                onChange={(next) => patch.mutate({ editorLigatures: next === "on" })}
+                value={ligatures}
+                onChange={(next) => patch.mutate({ editorLigatures: next })}
+              />
+            </Row>
+            <EditorPreview
+              stack={resolveFontStack(config)}
+              fontSize={fontSize}
+              fontWeight={fontWeight}
+              lineHeight={lineHeight}
+              ligatures={ligatures}
+            />
+          </Section>
+
+          <Section title="Editor">
+            <Row label="Word wrap">
+              <Toggle
+                label="Word wrap"
+                value={wordWrap}
+                onChange={(next) => patch.mutate({ editorWordWrap: next })}
+              />
+            </Row>
+            <Row label="Line numbers">
+              <Toggle
+                label="Line numbers"
+                value={lineNumbers}
+                onChange={(next) => patch.mutate({ editorLineNumbers: next })}
+              />
+            </Row>
+            <Row label="Minimap">
+              <Toggle
+                label="Minimap"
+                value={minimap}
+                onChange={(next) => patch.mutate({ editorMinimap: next })}
+              />
+            </Row>
+            <Row label="Indent guides">
+              <Toggle
+                label="Indent guides"
+                value={indentGuides}
+                onChange={(next) => patch.mutate({ editorIndentGuides: next })}
+              />
+            </Row>
+            <Row label="Sticky scroll" hint="Pin the enclosing scope while scrolling.">
+              <Toggle
+                label="Sticky scroll"
+                value={stickyScroll}
+                onChange={(next) => patch.mutate({ editorStickyScroll: next })}
+              />
+            </Row>
+            <Row label="Whitespace" hint="Render spaces and tabs as visible dots.">
+              <Segmented
+                label="Whitespace"
+                value={whitespace}
+                onChange={(next) => patch.mutate({ editorWhitespace: next })}
                 options={[
-                  { value: "off", label: "Off" },
-                  { value: "on", label: "On" },
+                  { value: "none", label: "None" },
+                  { value: "boundary", label: "Boundary" },
+                  { value: "trailing", label: "Trailing" },
+                  { value: "all", label: "All" },
                 ]}
               />
             </Row>
-            <EditorPreview fontId={fontId} fontSize={fontSize} ligatures={ligatures} />
+            <Row label="Tab size" hint="Display width of a tab character.">
+              <Segmented
+                label="Tab size"
+                value={String(tabSize)}
+                onChange={(next) => patch.mutate({ editorTabSize: Number(next) as 2 | 4 | 8 })}
+                options={[
+                  { value: "2", label: "2" },
+                  { value: "4", label: "4" },
+                  { value: "8", label: "8" },
+                ]}
+              />
+            </Row>
+          </Section>
+
+          <Section title="Diff">
+            <Row
+              label="Ignore whitespace-only changes"
+              hint="Lines differing only in leading/trailing whitespace don't count as changed."
+            >
+              <Toggle
+                label="Ignore whitespace-only changes"
+                value={ignoreTrimWhitespace}
+                onChange={(next) => patch.mutate({ diffIgnoreTrimWhitespace: next })}
+              />
+            </Row>
+            <Row
+              label="Collapse unchanged regions"
+              hint="Fold long unchanged stretches; click to expand."
+            >
+              <Toggle
+                label="Collapse unchanged regions"
+                value={collapseUnchanged}
+                onChange={(next) => patch.mutate({ diffCollapseUnchanged: next })}
+              />
+            </Row>
+            <Row label="Show moved code" hint="Detect blocks that moved and link both sides.">
+              <Toggle
+                label="Show moved code"
+                value={showMoves}
+                onChange={(next) => patch.mutate({ diffShowMoves: next })}
+              />
+            </Row>
           </Section>
 
           <VersionSection />
@@ -131,28 +287,59 @@ function Row({
   );
 }
 
+// Boolean rows all render as the same Off/On segmented control so the
+// page reads consistently.
+function Toggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <Segmented
+      label={label}
+      value={value ? "on" : "off"}
+      onChange={(next) => onChange(next === "on")}
+      options={[
+        { value: "off", label: "Off" },
+        { value: "on", label: "On" },
+      ]}
+    />
+  );
+}
+
 function Stepper({
   value,
   min,
   max,
+  step = 1,
+  format = (v: number) => String(v),
   onChange,
 }: {
   value: number;
   min: number;
   max: number;
+  step?: number;
+  format?: (v: number) => string;
   onChange: (next: number) => void;
 }) {
-  const step = (delta: number) => {
-    const next = Math.min(max, Math.max(min, value + delta));
+  const stepBy = (delta: number) => {
+    // Round to the step's precision so float steps (0.1) don't drift.
+    const raw = value + delta * step;
+    const precision = step < 1 ? 10 : 1;
+    const next = Math.min(max, Math.max(min, Math.round(raw * precision) / precision));
     if (next !== value) onChange(next);
   };
   return (
     <div className="inline-flex items-center gap-0.5 rounded-md border border-border bg-muted/30 p-0.5">
-      <StepButton label="Decrease font size" disabled={value <= min} onClick={() => step(-1)}>
+      <StepButton label="Decrease" disabled={value <= min} onClick={() => stepBy(-1)}>
         <Minus className="size-3.5" />
       </StepButton>
-      <span className="tabular w-9 text-center text-sm text-foreground">{value}px</span>
-      <StepButton label="Increase font size" disabled={value >= max} onClick={() => step(1)}>
+      <span className="tabular w-12 text-center text-sm text-foreground">{format(value)}</span>
+      <StepButton label="Increase" disabled={value >= max} onClick={() => stepBy(1)}>
         <Plus className="size-3.5" />
       </StepButton>
     </div>
@@ -186,16 +373,20 @@ function StepButton({
   );
 }
 
-// Live sample so font / size / ligature changes are visible without
-// opening a diff. The ligature toggle flips the OpenType feature flags
-// JetBrains Mono uses for ->, =>, !==, >=, etc.
+// Live sample so font / size / weight / line-height / ligature changes
+// are visible without opening a diff. Tagged data-code-surface so it
+// renders with the same font smoothing as the real editor.
 function EditorPreview({
-  fontId,
+  stack,
   fontSize,
+  fontWeight,
+  lineHeight,
   ligatures,
 }: {
-  fontId: EditorFontId;
+  stack: string;
   fontSize: number;
+  fontWeight: string;
+  lineHeight: number;
   ligatures: boolean;
 }) {
   return (
@@ -207,9 +398,10 @@ function EditorPreview({
         data-code-surface=""
         className="overflow-x-auto px-3 py-2.5 text-foreground"
         style={{
-          fontFamily: EDITOR_FONTS[fontId].stack,
+          fontFamily: stack,
           fontSize: `${fontSize}px`,
-          lineHeight: `${editorLineHeight(fontSize)}px`,
+          fontWeight,
+          lineHeight: `${editorLineHeightPx(fontSize, lineHeight)}px`,
           fontFeatureSettings: ligatures ? '"calt" 1, "liga" 1' : '"calt" 0, "liga" 0',
         }}
       >

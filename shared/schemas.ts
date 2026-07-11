@@ -25,12 +25,24 @@ export const SetThemePayloadSchema = z.object({
 
 // Editor font choices. The id is the persisted value; the renderer maps
 // it to a concrete font stack (see renderer/lib/editorFonts.ts), so the
-// two must agree on these literals.
-export const EditorFontSchema = z.enum(["jetbrains-mono", "sf-mono", "system-mono"]);
+// two must agree on these literals. "custom" reads the family string
+// from editorCustomFontFamily.
+export const EditorFontSchema = z.enum(["jetbrains-mono", "sf-mono", "system-mono", "custom"]);
 export type EditorFontId = z.infer<typeof EditorFontSchema>;
 
-export const EDITOR_FONT_SIZE_MIN = 10;
-export const EDITOR_FONT_SIZE_MAX = 18;
+export const EDITOR_FONT_SIZE_MIN = 9;
+export const EDITOR_FONT_SIZE_MAX = 24;
+
+export const EDITOR_LINE_HEIGHT_MIN = 1.1;
+export const EDITOR_LINE_HEIGHT_MAX = 2.2;
+
+// Rendered glyph weight for code. Monaco takes these as CSS
+// font-weight strings; variable fonts interpolate the exact value.
+export const EditorFontWeightSchema = z.enum(["300", "400", "450", "500", "600"]);
+export type EditorFontWeight = z.infer<typeof EditorFontWeightSchema>;
+
+export const EditorWhitespaceSchema = z.enum(["none", "boundary", "trailing", "all"]);
+export type EditorWhitespace = z.infer<typeof EditorWhitespaceSchema>;
 
 // Per-user global config under PReviewer's app-data directory. Every field is
 // optional; absent means "use the built-in default". Read at startup
@@ -38,9 +50,28 @@ export const EDITOR_FONT_SIZE_MAX = 18;
 // globalConfig IPC for everything else.
 export const GlobalConfigSchema = z.object({
   theme: ThemeSchema.optional(),
+
+  // Font
   editorFont: EditorFontSchema.optional(),
+  editorCustomFontFamily: z.string().max(200).optional(),
   editorFontSize: z.number().int().min(EDITOR_FONT_SIZE_MIN).max(EDITOR_FONT_SIZE_MAX).optional(),
+  editorFontWeight: EditorFontWeightSchema.optional(),
+  editorLineHeight: z.number().min(EDITOR_LINE_HEIGHT_MIN).max(EDITOR_LINE_HEIGHT_MAX).optional(),
   editorLigatures: z.boolean().optional(),
+
+  // Editor rendering
+  editorWordWrap: z.boolean().optional(),
+  editorLineNumbers: z.boolean().optional(),
+  editorMinimap: z.boolean().optional(),
+  editorIndentGuides: z.boolean().optional(),
+  editorWhitespace: EditorWhitespaceSchema.optional(),
+  editorStickyScroll: z.boolean().optional(),
+  editorTabSize: z.union([z.literal(2), z.literal(4), z.literal(8)]).optional(),
+
+  // Diff behavior
+  diffIgnoreTrimWhitespace: z.boolean().optional(),
+  diffCollapseUnchanged: z.boolean().optional(),
+  diffShowMoves: z.boolean().optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
 

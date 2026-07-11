@@ -111,8 +111,19 @@ export function DiffEditorBody({
     [repoId, diffId, path, write],
   );
 
+  // Tab display width is a text-model option, not an editor option, so
+  // it's applied to both models through a ref whenever the setting (or
+  // the mounted editor) changes.
+  const diffEditorRef = useRef<Parameters<DiffOnMount>[0] | null>(null);
+  useEffect(() => {
+    const model = diffEditorRef.current?.getModel();
+    model?.original.updateOptions({ tabSize: editor.tabSize });
+    model?.modified.updateOptions({ tabSize: editor.tabSize });
+  }, [editor.tabSize, localRight]);
+
   const onMount: DiffOnMount = useCallback(
     (editor) => {
+      diffEditorRef.current = editor;
       const layout = () => editor.layout();
       layout();
       window.addEventListener("resize", layout);
@@ -199,8 +210,19 @@ export function DiffEditorBody({
             fontSize: editor.fontSize,
             lineHeight: editor.lineHeight,
             fontFamily: editor.fontFamily,
+            fontWeight: editor.fontWeight,
             fontLigatures: editor.fontLigatures,
-            minimap: { enabled: false },
+            wordWrap: editor.wordWrap,
+            diffWordWrap: editor.wordWrap,
+            lineNumbers: editor.lineNumbers,
+            minimap: { enabled: editor.minimap },
+            renderWhitespace: editor.whitespace,
+            guides: { indentation: editor.indentGuides },
+            stickyScroll: { enabled: editor.stickyScroll },
+            // Diff behavior
+            ignoreTrimWhitespace: editor.diffIgnoreTrimWhitespace,
+            hideUnchangedRegions: { enabled: editor.diffCollapseUnchanged },
+            experimental: { showMoves: editor.diffShowMoves },
             // Keep the diff editor's hunk overview ruler on (the strip
             // that shows where changes live in the file and lets you
             // click to jump to them — actually useful for review). Drop
@@ -210,10 +232,6 @@ export function DiffEditorBody({
             overviewRulerLanes: 0,
             overviewRulerBorder: false,
             scrollBeyondLastLine: false,
-            wordWrap: "off",
-            renderWhitespace: "none",
-            guides: { indentation: false },
-            diffWordWrap: "off",
             // Tighten the gutter. Default reserves space for 5-digit line
             // numbers + a glyph margin + a folding column, ~70px total.
             // Folding is redundant in a diff view (Monaco already

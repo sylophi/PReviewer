@@ -2,7 +2,7 @@
 // @shared/schemas) to a concrete CSS font stack and a display label.
 // Keyed by EditorFontId so the map is exhaustive at the type level: add
 // a font to the schema enum and this won't compile until it's listed.
-import type { EditorFontId } from "@shared/schemas";
+import type { EditorFontId, GlobalConfig } from "@shared/schemas";
 
 interface EditorFont {
   label: string;
@@ -32,14 +32,34 @@ export const EDITOR_FONTS: Record<EditorFontId, EditorFont> = {
     label: "System",
     stack: `ui-monospace, SFMono-Regular, Menlo, ${MONO_FALLBACK}`,
   },
+  custom: {
+    label: "Custom",
+    // Placeholder; resolveFontStack substitutes the user's family.
+    stack: MONO_FALLBACK,
+  },
 };
 
 export const DEFAULT_EDITOR_FONT: EditorFontId = "jetbrains-mono";
 export const DEFAULT_EDITOR_FONT_SIZE = 12;
+export const DEFAULT_EDITOR_FONT_WEIGHT = "400";
+export const DEFAULT_EDITOR_LINE_HEIGHT = 1.5;
 
-// Line height tracks font size at ~1.5 so it isn't its own setting. The
-// editor surfaces and the settings preview all derive it here so they
-// can't drift.
-export function editorLineHeight(fontSize: number): number {
-  return Math.round(fontSize * 1.5);
+// The concrete font-family string for a config. A "custom" pick with a
+// blank family falls back to the default preset rather than rendering
+// in the bare fallback stack.
+export function resolveFontStack(config: GlobalConfig | undefined): string {
+  const id = config?.editorFont ?? DEFAULT_EDITOR_FONT;
+  if (id === "custom") {
+    const family = config?.editorCustomFontFamily?.trim();
+    if (!family) return EDITOR_FONTS[DEFAULT_EDITOR_FONT].stack;
+    // Quote the family name if it isn't already quoted and has spaces.
+    const quoted = /[",']/.test(family) || !family.includes(" ") ? family : `"${family}"`;
+    return `${quoted}, ${MONO_FALLBACK}`;
+  }
+  return EDITOR_FONTS[id].stack;
+}
+
+// Line height is stored as a multiplier; Monaco wants pixels.
+export function editorLineHeightPx(fontSize: number, multiplier: number): number {
+  return Math.round(fontSize * multiplier);
 }

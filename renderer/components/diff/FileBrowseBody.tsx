@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Editor, type OnMount } from "@monaco-editor/react";
 import { useEditorSettings } from "@/hooks/config/useEditorSettings";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
@@ -24,11 +24,22 @@ export function FileBrowseBody({
   const rightQ = useReadFile(repoId, diffId, path, "right");
   const leftQ = useReadFile(repoId, diffId, path, "left");
 
-  const onMount: OnMount = useCallback((editor) => {
-    const layout = () => editor.layout();
-    layout();
-    window.addEventListener("resize", layout);
-  }, []);
+  // Tab display width is a model option; apply it through a ref.
+  const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  useEffect(() => {
+    editorRef.current?.getModel()?.updateOptions({ tabSize: editorOpts.tabSize });
+  }, [editorOpts.tabSize]);
+
+  const onMount: OnMount = useCallback(
+    (editor) => {
+      editorRef.current = editor;
+      editor.getModel()?.updateOptions({ tabSize: editorOpts.tabSize });
+      const layout = () => editor.layout();
+      layout();
+      window.addEventListener("resize", layout);
+    },
+    [editorOpts.tabSize],
+  );
 
   const loading = rightQ.isLoading || leftQ.isLoading;
   const error = rightQ.error || leftQ.error;
@@ -59,14 +70,17 @@ export function FileBrowseBody({
           fontSize: editorOpts.fontSize,
           lineHeight: editorOpts.lineHeight,
           fontFamily: editorOpts.fontFamily,
+          fontWeight: editorOpts.fontWeight,
           fontLigatures: editorOpts.fontLigatures,
-          minimap: { enabled: false },
+          minimap: { enabled: editorOpts.minimap },
           overviewRulerLanes: 0,
           overviewRulerBorder: false,
           scrollBeyondLastLine: false,
-          wordWrap: "off",
-          renderWhitespace: "none",
-          guides: { indentation: false },
+          wordWrap: editorOpts.wordWrap,
+          lineNumbers: editorOpts.lineNumbers,
+          renderWhitespace: editorOpts.whitespace,
+          guides: { indentation: editorOpts.indentGuides },
+          stickyScroll: { enabled: editorOpts.stickyScroll },
           // Match DiffEditorBody's trimmed gutter so the two editor
           // surfaces line up when the user switches between changed and
           // unchanged files in the same tab area.
