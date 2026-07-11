@@ -1,6 +1,6 @@
 import { ArrowLeft, Minus, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-import type { EditorFontId, EditorFontWeight, EditorWhitespace, Theme } from "@shared/schemas";
+import type { EditorFontWeight, EditorWhitespace, Theme } from "@shared/schemas";
 import {
   EDITOR_FONT_SIZE_MAX,
   EDITOR_FONT_SIZE_MIN,
@@ -9,11 +9,9 @@ import {
 } from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 import {
-  DEFAULT_EDITOR_FONT,
   DEFAULT_EDITOR_FONT_SIZE,
   DEFAULT_EDITOR_FONT_WEIGHT,
   DEFAULT_EDITOR_LINE_HEIGHT,
-  EDITOR_FONTS,
   editorLineHeightPx,
   resolveFontStack,
 } from "@/lib/editorFonts";
@@ -29,7 +27,6 @@ export function Settings() {
   const patch = useGlobalConfigPatch();
 
   const theme: Theme = config?.theme ?? "system";
-  const fontId: EditorFontId = config?.editorFont ?? DEFAULT_EDITOR_FONT;
   const fontSize = config?.editorFontSize ?? DEFAULT_EDITOR_FONT_SIZE;
   const fontWeight: EditorFontWeight = config?.editorFontWeight ?? DEFAULT_EDITOR_FONT_WEIGHT;
   const lineHeight = config?.editorLineHeight ?? DEFAULT_EDITOR_LINE_HEIGHT;
@@ -83,33 +80,25 @@ export function Settings() {
           </Section>
 
           <Section title="Font">
-            <Row label="Font">
-              <Segmented
-                label="Editor font"
-                value={fontId}
-                onChange={(next) => patch.mutate({ editorFont: next })}
-                options={(Object.keys(EDITOR_FONTS) as EditorFontId[]).map((id) => ({
-                  value: id,
-                  label: EDITOR_FONTS[id].label,
-                }))}
+            <Row
+              label="Font family"
+              hint="Any font installed on your system, or a comma-separated stack. Empty uses the platform monospace."
+            >
+              <Input
+                key={config?.editorFontFamily ?? ""}
+                type="text"
+                defaultValue={config?.editorFontFamily ?? ""}
+                placeholder="e.g. JetBrains Mono, Fira Code"
+                className="w-64 font-mono"
+                onBlur={(e) => patch.mutate({ editorFontFamily: e.target.value.trim() })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    patch.mutate({ editorFontFamily: e.currentTarget.value.trim() });
+                    e.currentTarget.blur();
+                  }
+                }}
               />
             </Row>
-            {fontId === "custom" ? (
-              <Row label="Font family" hint="Any installed monospace family, e.g. Fira Code.">
-                <Input
-                  type="text"
-                  defaultValue={config?.editorCustomFontFamily ?? ""}
-                  placeholder="Font family name"
-                  className="w-56 font-mono"
-                  onBlur={(e) => patch.mutate({ editorCustomFontFamily: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      patch.mutate({ editorCustomFontFamily: e.currentTarget.value });
-                    }
-                  }}
-                />
-              </Row>
-            ) : null}
             <Row label="Font size">
               <Stepper
                 value={fontSize}

@@ -23,13 +23,6 @@ export const SetThemePayloadSchema = z.object({
   theme: ThemeSchema,
 });
 
-// Editor font choices. The id is the persisted value; the renderer maps
-// it to a concrete font stack (see renderer/lib/editorFonts.ts), so the
-// two must agree on these literals. "custom" reads the family string
-// from editorCustomFontFamily.
-export const EditorFontSchema = z.enum(["jetbrains-mono", "sf-mono", "system-mono", "custom"]);
-export type EditorFontId = z.infer<typeof EditorFontSchema>;
-
 export const EDITOR_FONT_SIZE_MIN = 9;
 export const EDITOR_FONT_SIZE_MAX = 24;
 
@@ -51,9 +44,11 @@ export type EditorWhitespace = z.infer<typeof EditorWhitespaceSchema>;
 export const GlobalConfigSchema = z.object({
   theme: ThemeSchema.optional(),
 
-  // Font
-  editorFont: EditorFontSchema.optional(),
-  editorCustomFontFamily: z.string().max(200).optional(),
+  // Font. editorFontFamily is a free-form family name or CSS stack, VS
+  // Code style — the app bundles no code font. Absent/empty = platform
+  // default monospace. (Unknown keys from older configs — editorFont,
+  // editorCustomFontFamily — are silently stripped by Zod on read.)
+  editorFontFamily: z.string().max(200).optional(),
   editorFontSize: z.number().int().min(EDITOR_FONT_SIZE_MIN).max(EDITOR_FONT_SIZE_MAX).optional(),
   editorFontWeight: EditorFontWeightSchema.optional(),
   editorLineHeight: z.number().min(EDITOR_LINE_HEIGHT_MIN).max(EDITOR_LINE_HEIGHT_MAX).optional(),

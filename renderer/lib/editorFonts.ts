@@ -1,62 +1,27 @@
-// Maps the persisted editorFont id (see EditorFontSchema in
-// @shared/schemas) to a concrete CSS font stack and a display label.
-// Keyed by EditorFontId so the map is exhaustive at the type level: add
-// a font to the schema enum and this won't compile until it's listed.
-import type { EditorFontId, GlobalConfig } from "@shared/schemas";
+// Editor font resolution, VS Code style: the app bundles no code font.
+// The user types any installed family (or a comma-separated stack) into
+// settings; empty means the platform's default monospace.
+import type { GlobalConfig } from "@shared/schemas";
 
-interface EditorFont {
-  label: string;
-  // First entry is the intended face; the rest are fallbacks for the
-  // moment the bundled @font-face is still resolving and for platforms
-  // where the system face is absent.
-  stack: string;
-}
+// ui-monospace resolves to SF Mono on macOS; the rest is the classic
+// cross-platform fallback chain.
+export const DEFAULT_MONO_STACK =
+  'ui-monospace, "SF Mono", Menlo, Monaco, Consolas, "Courier New", monospace';
 
-const MONO_FALLBACK = 'Monaco, Consolas, "Liberation Mono", "Courier New", monospace';
-
-export const EDITOR_FONTS: Record<EditorFontId, EditorFont> = {
-  "jetbrains-mono": {
-    label: "JetBrains Mono",
-    // Prefer a locally-installed static JetBrains Mono over the bundled
-    // variable face: the static Regular renders a touch heavier and is
-    // what VS Code / Zed pick up, so users coming from those editors
-    // get identical glyph weight. The bundled variable font remains the
-    // guaranteed fallback.
-    stack: `"JetBrains Mono", "JetBrains Mono Variable", "SF Mono", ${MONO_FALLBACK}`,
-  },
-  "sf-mono": {
-    label: "SF Mono",
-    stack: `"SF Mono", ${MONO_FALLBACK}`,
-  },
-  "system-mono": {
-    label: "System",
-    stack: `ui-monospace, SFMono-Regular, Menlo, ${MONO_FALLBACK}`,
-  },
-  custom: {
-    label: "Custom",
-    // Placeholder; resolveFontStack substitutes the user's family.
-    stack: MONO_FALLBACK,
-  },
-};
-
-export const DEFAULT_EDITOR_FONT: EditorFontId = "jetbrains-mono";
 export const DEFAULT_EDITOR_FONT_SIZE = 12;
 export const DEFAULT_EDITOR_FONT_WEIGHT = "400";
 export const DEFAULT_EDITOR_LINE_HEIGHT = 1.5;
 
-// The concrete font-family string for a config. A "custom" pick with a
-// blank family falls back to the default preset rather than rendering
-// in the bare fallback stack.
+// The concrete font-family string for a config. A single family with
+// spaces gets quoted; a comma-separated value is treated as a stack the
+// user authored and passed through. The default stack is always
+// appended so a typo'd family degrades to readable monospace.
 export function resolveFontStack(config: GlobalConfig | undefined): string {
-  const id = config?.editorFont ?? DEFAULT_EDITOR_FONT;
-  if (id === "custom") {
-    const family = config?.editorCustomFontFamily?.trim();
-    if (!family) return EDITOR_FONTS[DEFAULT_EDITOR_FONT].stack;
-    // Quote the family name if it isn't already quoted and has spaces.
-    const quoted = /[",']/.test(family) || !family.includes(" ") ? family : `"${family}"`;
-    return `${quoted}, ${MONO_FALLBACK}`;
-  }
-  return EDITOR_FONTS[id].stack;
+  const family = config?.editorFontFamily?.trim();
+  if (!family) return DEFAULT_MONO_STACK;
+  if (family.includes(",")) return `${family}, ${DEFAULT_MONO_STACK}`;
+  const quoted = /["']/.test(family) || !family.includes(" ") ? family : `"${family}"`;
+  return `${quoted}, ${DEFAULT_MONO_STACK}`;
 }
 
 // Line height is stored as a multiplier; Monaco wants pixels.

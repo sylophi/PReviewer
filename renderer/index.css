@@ -1,5 +1,4 @@
 @import "@fontsource-variable/geist";
-@import "@fontsource-variable/jetbrains-mono";
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -55,6 +54,13 @@
 
 @theme inline {
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  /* Without this, font-mono falls through Tailwind's default stack to
+     Menlo, which is heavier and wider than everything around it and
+     lacks intermediate weights (font-medium synthesizes to fake bold).
+     ui-monospace (SF Mono on macOS) matches the editor's default now
+     that no code font ships with the app; file-tree names, ref chips,
+     and tab labels read as one surface with the code. */
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
