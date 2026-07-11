@@ -1,6 +1,21 @@
 // Zod schemas for IPC validation.
 import { z } from "zod";
 
+// Repo / diff ids are 12-hex short hashes (see main/util/id.ts). Payload
+// schemas validate against the same shape the records enforce, because
+// these ids are joined into filesystem paths under the app-data dir —
+// an unvalidated "../.." id would escape it.
+export const IdSchema = z.string().regex(/^[0-9a-f]{12}$/);
+
+// Repo-relative file paths as git reports them. Rejects the shapes that
+// would escape the worktree when joined onto it for fs reads/writes.
+export const RelPathSchema = z
+  .string()
+  .min(1)
+  .refine((p) => !p.startsWith("/") && !p.includes("\0") && !p.split("/").includes(".."), {
+    message: "Expected a repo-relative path",
+  });
+
 export const ThemeSchema = z.enum(["light", "dark", "system"]);
 export type Theme = z.infer<typeof ThemeSchema>;
 
@@ -24,12 +39,7 @@ export const EDITOR_FONT_SIZE_MAX = 18;
 export const GlobalConfigSchema = z.object({
   theme: ThemeSchema.optional(),
   editorFont: EditorFontSchema.optional(),
-  editorFontSize: z
-    .number()
-    .int()
-    .min(EDITOR_FONT_SIZE_MIN)
-    .max(EDITOR_FONT_SIZE_MAX)
-    .optional(),
+  editorFontSize: z.number().int().min(EDITOR_FONT_SIZE_MIN).max(EDITOR_FONT_SIZE_MAX).optional(),
   editorLigatures: z.boolean().optional(),
 });
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>;
@@ -91,7 +101,7 @@ export const AddRepoPayloadSchema = z.object({
 });
 
 export const RemoveRepoPayloadSchema = z.object({
-  id: z.string().min(1),
+  id: IdSchema,
 });
 
 // Ref expressions. Each side of a diff is one of these.
@@ -128,7 +138,7 @@ export const RepoBranchesSchema = z.object({
 export type RepoBranches = z.infer<typeof RepoBranchesSchema>;
 
 export const RepoBranchesPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
 });
 
 export const RecentCommitSchema = z.object({
@@ -139,7 +149,7 @@ export const RecentCommitSchema = z.object({
 export type RecentCommit = z.infer<typeof RecentCommitSchema>;
 
 export const RecentCommitsPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
 });
 
 export const WorktreeSchema = z.object({
@@ -153,7 +163,7 @@ export const WorktreeSchema = z.object({
 export type Worktree = z.infer<typeof WorktreeSchema>;
 
 export const WorktreesPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
 });
 
 // A persistent diff. The `reviewed` map stores the content hash of each
@@ -169,6 +179,10 @@ export const DiffSchema = z.object({
   // writes, HEAD, "is live" checks) to this worktree. When unset, the
   // repo's main path is used so pre-worktree diffs keep working.
   rightWorktreePath: z.string().min(1).optional(),
+  // Set on diffs created from a PR. Records which PR the private
+  // refs/previewer/pull/<n> keep-alive ref belongs to, so deleting the
+  // diff can prune the ref once no other diff needs it.
+  prNumber: z.number().int().positive().optional(),
   // When set, the diff freezes to these commit hashes regardless of
   // where the underlying refs move. Pin/unpin toggles this.
   pinned: z
@@ -190,7 +204,7 @@ export const DiffSchema = z.object({
 export type Diff = z.infer<typeof DiffSchema>;
 
 export const CreateDiffPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
   name: z.string().min(1).optional(),
   left: RefExprSchema,
   right: RefExprSchema,
@@ -198,12 +212,12 @@ export const CreateDiffPayloadSchema = z.object({
 });
 
 export const DiffRefPayloadSchema = z.object({
-  repoId: z.string().min(1),
-  diffId: z.string().min(1),
+  repoId: IdSchema,
+  diffId: IdSchema,
 });
 
 export const ListDiffsPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
 });
 
 export const FileChangeKindSchema = z.enum([
@@ -237,22 +251,22 @@ export const ResolvedDiffSchema = z.object({
 export type ResolvedDiff = z.infer<typeof ResolvedDiffSchema>;
 
 export const SetReviewedPayloadSchema = z.object({
-  repoId: z.string().min(1),
-  diffId: z.string().min(1),
-  path: z.string().min(1),
+  repoId: IdSchema,
+  diffId: IdSchema,
+  path: RelPathSchema,
   reviewed: z.boolean(),
 });
 
 export const SetPinPayloadSchema = z.object({
-  repoId: z.string().min(1),
-  diffId: z.string().min(1),
+  repoId: IdSchema,
+  diffId: IdSchema,
   pinned: z.boolean(),
 });
 
 export const ReadFilePayloadSchema = z.object({
-  repoId: z.string().min(1),
-  diffId: z.string().min(1),
-  path: z.string().min(1),
+  repoId: IdSchema,
+  diffId: IdSchema,
+  path: RelPathSchema,
   // "left" reads at the diff's left ref, "right" at the right ref.
   side: z.enum(["left", "right"]),
 });
@@ -263,10 +277,24 @@ export const ReadFileResultSchema = z.object({
 });
 export type ReadFileResult = z.infer<typeof ReadFileResultSchema>;
 
+// Content of the right side as it was when the file was marked reviewed
+// (recovered from the stored blob hash). Null when the file was never
+// marked, the mark predates snapshot support, or git gc pruned the blob.
+export const ReviewedSnapshotPayloadSchema = z.object({
+  repoId: IdSchema,
+  diffId: IdSchema,
+  path: RelPathSchema,
+});
+
+export const ReviewedSnapshotResultSchema = z.object({
+  content: z.string().nullable(),
+});
+export type ReviewedSnapshotResult = z.infer<typeof ReviewedSnapshotResultSchema>;
+
 export const WriteFilePayloadSchema = z.object({
-  repoId: z.string().min(1),
-  diffId: z.string().min(1),
-  path: z.string().min(1),
+  repoId: IdSchema,
+  diffId: IdSchema,
+  path: RelPathSchema,
   content: z.string(),
 });
 
@@ -288,11 +316,11 @@ export const PullRequestSummarySchema = z.object({
 export type PullRequestSummary = z.infer<typeof PullRequestSummarySchema>;
 
 export const ListPullRequestsPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
 });
 
 export const CreateDiffFromPrPayloadSchema = z.object({
-  repoId: z.string().min(1),
+  repoId: IdSchema,
   number: z.number().int().positive(),
   // Worktree the diff binds to on disk. Same semantics as
   // CreateDiffPayload.rightWorktreePath: omit for the main worktree,

@@ -59,37 +59,20 @@ export const diffs = {
     rightWorktreePath?: string;
   }) => diffsClient.create(input),
   get: (input: { repoId: string; diffId: string }) => diffsClient.get(input),
-  delete: (input: { repoId: string; diffId: string }) =>
-    diffsClient.delete(input),
-  resolve: (input: { repoId: string; diffId: string }) =>
-    diffsClient.resolve(input),
-  fullTree: (input: { repoId: string; diffId: string }) =>
-    diffsClient.fullTree(input),
-  setReviewed: (input: {
-    repoId: string;
-    diffId: string;
-    path: string;
-    reviewed: boolean;
-  }) => diffsClient.setReviewed(input),
-  setPin: (input: { repoId: string; diffId: string; pinned: boolean }) =>
-    diffsClient.setPin(input),
-  readFile: (input: {
-    repoId: string;
-    diffId: string;
-    path: string;
-    side: "left" | "right";
-  }) => diffsClient.readFile(input),
-  writeFile: (input: {
-    repoId: string;
-    diffId: string;
-    path: string;
-    content: string;
-  }) => diffsClient.writeFile(input),
-  createFromPullRequest: (input: {
-    repoId: string;
-    number: number;
-    rightWorktreePath?: string;
-  }) => diffsClient.createFromPullRequest(input),
+  delete: (input: { repoId: string; diffId: string }) => diffsClient.delete(input),
+  resolve: (input: { repoId: string; diffId: string }) => diffsClient.resolve(input),
+  fullTree: (input: { repoId: string; diffId: string }) => diffsClient.fullTree(input),
+  setReviewed: (input: { repoId: string; diffId: string; path: string; reviewed: boolean }) =>
+    diffsClient.setReviewed(input),
+  setPin: (input: { repoId: string; diffId: string; pinned: boolean }) => diffsClient.setPin(input),
+  readFile: (input: { repoId: string; diffId: string; path: string; side: "left" | "right" }) =>
+    diffsClient.readFile(input),
+  readReviewedSnapshot: (input: { repoId: string; diffId: string; path: string }) =>
+    diffsClient.readReviewedSnapshot(input),
+  writeFile: (input: { repoId: string; diffId: string; path: string; content: string }) =>
+    diffsClient.writeFile(input),
+  createFromPullRequest: (input: { repoId: string; number: number; rightWorktreePath?: string }) =>
+    diffsClient.createFromPullRequest(input),
 } as const;
 
 export const gh = {

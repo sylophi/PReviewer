@@ -17,7 +17,14 @@ export async function readFileAtRef(
   if (ref.kind === "workingTree") {
     return readFromDisk(cwd, path);
   }
-  const commit = await tryResolveOrNull(cwd, ref);
+  // Unresolvable refs (e.g. HEAD in a repo with no commits yet) read as
+  // "no content on this side" rather than failing the whole tab.
+  let commit: string | null;
+  try {
+    commit = await tryResolveOrNull(cwd, ref);
+  } catch {
+    commit = null;
+  }
   if (!commit) return null;
   try {
     return await run(cwd, ["show", `${commit}:${path}`]);

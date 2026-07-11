@@ -16,6 +16,7 @@ import {
   freezeRef,
   fullFileTree,
   isGitRepo,
+  readBlob,
   readFileAtRef,
   resolveAndDiff,
   rightSideHashForPath,
@@ -51,6 +52,24 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
   get: ({ repoId, diffId }) => findDiffOrThrow(repoId, diffId),
 
   delete: async ({ repoId, diffId }) => {
+    // Best-effort cleanup of the private PR keep-alive ref, unless
+    // another diff for the same PR still needs it. Failures here never
+    // block the delete.
+    try {
+      const diff = await findDiffOrThrow(repoId, diffId);
+      if (diff.prNumber) {
+        const repo = await findRepoOrThrow(repoId);
+        const siblings = await listDiffs(repoId);
+        const stillUsed = siblings.some((d) => d.id !== diffId && d.prNumber === diff.prNumber);
+        if (!stillUsed) {
+          await run(repo.path, ["update-ref", "-d", `refs/previewer/pull/${diff.prNumber}`]).catch(
+            () => undefined,
+          );
+        }
+      }
+    } catch {
+      // The diff record may already be gone; deletion below is idempotent.
+    }
     await deleteDiff(repoId, diffId);
   },
 
@@ -102,6 +121,13 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     return { content, editable };
   },
 
+  readReviewedSnapshot: async ({ repoId, diffId, path }) => {
+    const { diff, cwd } = await loadDiffContext(repoId, diffId);
+    const stored = diff.reviewed[path];
+    if (!stored || stored.hash.length === 0) return { content: null };
+    return { content: await readBlob(cwd, stored.hash) };
+  },
+
   writeFile: async ({ repoId, diffId, path, content }) => {
     const { diff, cwd } = await loadDiffContext(repoId, diffId);
     if (diff.pinned !== null || !(await rightSideIsLive(cwd, diff.right))) {
@@ -143,6 +169,7 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
       name: `PR #${pr.number}: ${pr.title}`,
       left: { kind: "commit", hash: leftSha },
       right: { kind: "commit", hash: pr.headRefOid },
+      prNumber: pr.number,
       ...(rightWorktreePath ? { rightWorktreePath } : {}),
     });
   },
@@ -159,9 +186,7 @@ async function computePrLeftSha(cwd: string, pr: PullRequestView): Promise<strin
       await run(cwd, ["fetch", "origin", pr.mergeCommit.oid]).catch(() => {
         /* the SHA might already be reachable; ignore */
       });
-      const parent = (
-        await run(cwd, ["rev-parse", `${pr.mergeCommit.oid}^1`])
-      ).trim();
+      const parent = (await run(cwd, ["rev-parse", `${pr.mergeCommit.oid}^1`])).trim();
       if (parent) return parent;
     } catch {
       // Fall through to the merge-base attempt below.

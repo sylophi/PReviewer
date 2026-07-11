@@ -2,7 +2,12 @@
 // with live git lookups. Kept out of the IPC layer so handlers stay
 // thin and the heavy lifting is reusable.
 import type { Diff, FileChange, RefExpr } from "@shared/schemas";
-import { blobHashAtPath, blobHashesAtCommit, blobHashesAtWorkingTree } from "./hashes";
+import {
+  blobHashAtPath,
+  blobHashesAtCommit,
+  blobHashesAtWorkingTree,
+  writeBlobFromWorkingTree,
+} from "./hashes";
 import { tryResolveOrNull } from "./refs";
 
 // A pinned diff swaps the live ref for the frozen commit hash. The
@@ -46,15 +51,18 @@ async function rightSideHashes(
   return blobHashesAtWorkingTree(cwd, livePaths);
 }
 
-// Single-file lookup for the mark-reviewed mutation.
+// Single-file lookup for the mark-reviewed mutation. Working-tree
+// blobs are written into the object DB (not just hashed) so the
+// reviewed snapshot's content stays recoverable for the "changes since
+// review" view after the file moves on. Commit-side blobs are already
+// referenced by the commit, so a plain lookup suffices.
 export async function rightSideHashForPath(
   cwd: string,
   right: RefExpr,
   path: string,
 ): Promise<string | null> {
   if (right.kind === "workingTree") {
-    const map = await blobHashesAtWorkingTree(cwd, [path]);
-    return map.get(path) ?? null;
+    return writeBlobFromWorkingTree(cwd, path);
   }
   if (right.kind === "commit") {
     return blobHashAtPath(cwd, right.hash, path);

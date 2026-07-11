@@ -1,6 +1,5 @@
 {
   "name": "previewer",
-  "productName": "PReviewer",
   "version": "0.0.0",
   "private": true,
   "description": "Desktop app for reviewing diffs with persistent review state and LSP-aware reading.",
@@ -10,7 +9,6 @@
     "url": "https://github.com/sylophi/PReviewer.git"
   },
   "main": ".vite/build/index.js",
-  "packageManager": "pnpm@11.1.1",
   "scripts": {
     "start": "electron-forge start",
     "dev": "pnpm run start",
@@ -18,6 +16,7 @@
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "typecheck": "tsc --noEmit",
+    "verify:git": "pnpm dlx tsx scripts/verify-git-layer.ts",
     "lint": "oxlint .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
@@ -75,5 +74,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "~7.0.2",
     "vite": "^8.0.0"
-  }
+  },
+  "packageManager": "pnpm@11.1.1",
+  "productName": "PReviewer"
 }

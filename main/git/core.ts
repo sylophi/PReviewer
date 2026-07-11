@@ -25,7 +25,10 @@ async function runGit(
 }
 
 export async function run(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await runGit(args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+  // 64MB: large PR patches and whole-file reads of generated code
+  // routinely clear 10MB, and hitting maxBuffer surfaces as an opaque
+  // "maxBuffer length exceeded" failure for the whole diff.
+  const { stdout } = await runGit(args, { cwd, maxBuffer: 64 * 1024 * 1024 });
   return stdout;
 }
 
