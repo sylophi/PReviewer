@@ -345,13 +345,10 @@ export const ListPullRequestsPayloadSchema = z.object({
   repoId: IdSchema,
 });
 
+// The worktree binding is auto-detected main-side: if a worktree has
+// the PR's head branch checked out, the diff reviews that live
+// checkout; otherwise it freezes to the PR head SHA.
 export const CreateDiffFromPrPayloadSchema = z.object({
   repoId: IdSchema,
   number: z.number().int().positive(),
-  // Worktree the diff binds to on disk. Same semantics as
-  // CreateDiffPayload.rightWorktreePath: omit for the main worktree,
-  // set the absolute path for a non-main checkout. PR head SHAs are
-  // global so this doesn't change the resolved diff; it only changes
-  // where git commands run and which checkout edits would land in.
-  rightWorktreePath: z.string().min(1).optional(),
 });

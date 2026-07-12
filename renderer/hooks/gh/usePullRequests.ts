@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Diff, GhReadiness, PullRequestSummary } from "@shared/schemas";
-import { invalidateDiffs } from "@/hooks/diffs/useDiffs";
+import { invalidateDiffs, invalidateResolvedDiff } from "@/hooks/diffs/useDiffs";
 import { queryKeys } from "@/lib/queryKeys";
 
 export function useGhReadiness() {
@@ -25,9 +25,14 @@ export function usePullRequests(repoId: string | null) {
 
 export function useCreateDiffFromPullRequest() {
   const queryClient = useQueryClient();
-  return useMutation<Diff, Error, { repoId: string; number: number; rightWorktreePath?: string }>({
+  return useMutation<Diff, Error, { repoId: string; number: number }>({
     mutationFn: (input) => window.api.diffs.createFromPullRequest(input),
     meta: { errorTitle: "Couldn't open PR" },
-    onSuccess: (diff) => invalidateDiffs(queryClient, diff.repoId),
+    onSuccess: (diff) => {
+      invalidateDiffs(queryClient, diff.repoId);
+      // Re-picking an existing PR refreshes its refs in place; the
+      // cached resolve is now stale.
+      invalidateResolvedDiff(queryClient, diff.repoId, diff.id);
+    },
   });
 }

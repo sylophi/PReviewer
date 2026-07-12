@@ -145,6 +145,36 @@ export async function setPin(
   });
 }
 
+// Re-point an existing diff at fresh refs (and optionally a new
+// worktree binding / name). Used when the user re-picks a PR that
+// already has a diff: the review marks stay, needs-re-review flags
+// surface whatever moved, and the diff follows the PR's current state.
+export async function updateDiffRefs(
+  repoId: string,
+  diffId: string,
+  updates: {
+    left: RefExpr;
+    right: RefExpr;
+    rightWorktreePath: string | null;
+    name?: string | undefined;
+  },
+): Promise<Diff> {
+  return withDiffLock(repoId, diffId, async () => {
+    const diff = await findDiffOrThrow(repoId, diffId);
+    const next: Diff = {
+      ...diff,
+      left: updates.left,
+      right: updates.right,
+      ...(updates.name ? { name: updates.name } : {}),
+      updatedAt: Date.now(),
+    };
+    if (updates.rightWorktreePath) next.rightWorktreePath = updates.rightWorktreePath;
+    else delete (next as { rightWorktreePath?: string }).rightWorktreePath;
+    await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+    return next;
+  });
+}
+
 // Drop the rightWorktreePath binding. Called when the bound worktree
 // has been deleted on disk: the diff's refs are still valid against the
 // main repo, so we strip the dead binding rather than fail every git

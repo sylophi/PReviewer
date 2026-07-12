@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FolderGit2 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import type { RecentCommit, RefExpr, Worktree } from "@shared/schemas";
 import { useCreateDiff } from "@/hooks/diffs/useDiffs";
@@ -67,7 +68,12 @@ export function NewDiffDialog({
   onClose: () => void;
 }) {
   const repo = (useRepos().data ?? []).find((r) => r.id === initialRepoId) ?? null;
-  const [source, setSource] = useState<Source>("refs");
+  // PR review is the primary flow: repos with a GitHub remote land on
+  // the Pull request tab; everything else starts on Refs. An explicit
+  // tab pick always wins.
+  const [pickedSource, setPickedSource] = useState<Source | null>(null);
+  const source: Source =
+    pickedSource ?? (repo?.remoteUrl?.includes("github") ? "pullRequest" : "refs");
 
   return (
     <ModalShell onClose={onClose} popoverClassName="w-[95vw] max-w-[1200px] h-[82vh]">
@@ -83,11 +89,11 @@ export function NewDiffDialog({
           <Segmented
             label="Diff source"
             value={source}
-            onChange={setSource}
+            onChange={setPickedSource}
             size="md"
             options={[
-              { value: "refs", label: "Refs" },
               { value: "pullRequest", label: "Pull request" },
+              { value: "refs", label: "Refs" },
             ]}
           />
         </div>
@@ -468,40 +474,42 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
   const create = useCreateDiffFromPullRequest();
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
-  const [worktreePath, setWorktreePath] = useState<string>("");
 
-  useEffect(() => {
-    if (!worktrees.data || worktreePath !== "") return;
-    const main = worktrees.data.find((w) => w.isMain) ?? worktrees.data[0];
-    if (main) setWorktreePath(main.path);
-  }, [worktrees.data, worktreePath]);
+  // Worktrees that already have a PR's head branch checked out get a
+  // chip and float to the top: reviewing those opens the live checkout
+  // (editable, tracks the files on disk) rather than a frozen SHA.
+  const worktreeByBranch = useMemo(() => {
+    const m = new Map<string, Worktree>();
+    for (const w of worktrees.data ?? []) {
+      if (w.branch) m.set(w.branch, w);
+    }
+    return m;
+  }, [worktrees.data]);
 
   const filtered = useMemo(() => {
     const all = prs.data ?? [];
     const needle = filter.trim().toLowerCase();
-    if (!needle) return all;
-    return all.filter(
-      (pr) =>
-        pr.title.toLowerCase().includes(needle) ||
-        String(pr.number).includes(needle) ||
-        pr.headRefName.toLowerCase().includes(needle),
+    const matched = needle
+      ? all.filter(
+          (pr) =>
+            pr.title.toLowerCase().includes(needle) ||
+            String(pr.number).includes(needle) ||
+            pr.headRefName.toLowerCase().includes(needle),
+        )
+      : all;
+    // Checked-out PRs first (stable within each group).
+    return [...matched].sort(
+      (a, b) =>
+        Number(worktreeByBranch.has(b.headRefName)) - Number(worktreeByBranch.has(a.headRefName)),
     );
-  }, [prs.data, filter]);
-
-  const selectedWorktree = (worktrees.data ?? []).find((w) => w.path === worktreePath) ?? null;
-  const worktreeList = worktrees.data ?? [];
+  }, [prs.data, filter, worktreeByBranch]);
 
   const onPick = (number: number) => {
-    const carryWorktree = selectedWorktree && !selectedWorktree.isMain;
     create.mutate(
-      {
-        repoId,
-        number,
-        ...(carryWorktree && selectedWorktree ? { rightWorktreePath: selectedWorktree.path } : {}),
-      },
+      { repoId, number },
       {
         onSuccess: (diff) => {
-          notify("Diff created", diff.name);
+          notify("Opening review", diff.name);
           onClose();
           void navigate({
             to: "/repos/$repoId/diffs/$diffId",
@@ -512,38 +520,31 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
     );
   };
 
-  return (
-    <div className="flex h-full min-h-0 flex-col gap-4 px-7 py-6">
-      {readiness.data && !readiness.data.installed ? (
+  // gh problems make the list unusable; show the remedy instead of an
+  // empty shell that errors underneath.
+  if (readiness.data && !readiness.data.installed) {
+    return (
+      <div className="px-7 py-6">
         <GhNotice>
           GitHub CLI (<code className="font-mono">gh</code>) isn't installed. Install with{" "}
           <code className="font-mono">brew install gh</code>, then reopen.
         </GhNotice>
-      ) : readiness.data && !readiness.data.authed ? (
+      </div>
+    );
+  }
+  if (readiness.data && !readiness.data.authed) {
+    return (
+      <div className="px-7 py-6">
         <GhNotice>
           GitHub CLI isn't signed in. Run <code className="font-mono">gh auth login</code>, then
           reopen.
         </GhNotice>
-      ) : null}
+      </div>
+    );
+  }
 
-      {worktreeList.length > 0 ? (
-        <div className="flex shrink-0 flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground/80">
-            Read from
-          </span>
-          <WorktreeCombobox
-            worktrees={worktreeList}
-            selectedPath={worktreePath}
-            onChange={setWorktreePath}
-          />
-          <p className="text-xs leading-relaxed text-muted-foreground/70">
-            PR contents are the same regardless of which worktree you pick. This only chooses where
-            git commands run, and where edits would land if you later check the PR branch out
-            yourself. PReviewer never checks anything out for you.
-          </p>
-        </div>
-      ) : null}
-
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4 px-7 py-6">
       <Input
         type="text"
         value={filter}
@@ -573,33 +574,56 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {filtered.map((pr) => (
-              <li key={pr.number}>
-                <button
-                  type="button"
-                  onClick={() => onPick(pr.number)}
-                  disabled={create.isPending}
-                  className="flex w-full items-start gap-3 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 disabled:cursor-wait disabled:opacity-50"
-                >
-                  <Badge tone={stateTone(pr.state, pr.isDraft)} className="mt-0.5">
-                    {pr.isDraft ? "Draft" : pr.state.toLowerCase()}
-                  </Badge>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 items-baseline gap-2 text-sm">
-                      <span className="tabular shrink-0 text-muted-foreground">#{pr.number}</span>
-                      <span className="truncate font-medium">{pr.title}</span>
+            {filtered.map((pr) => {
+              const checkout = worktreeByBranch.get(pr.headRefName) ?? null;
+              return (
+                <li key={pr.number}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(pr.number)}
+                    disabled={create.isPending}
+                    className="flex w-full items-start gap-3 p-3 text-left outline-none transition-colors hover:bg-accent focus-visible:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/40 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <Badge tone={stateTone(pr.state, pr.isDraft)} className="mt-0.5">
+                      {pr.isDraft ? "Draft" : pr.state.toLowerCase()}
+                    </Badge>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-baseline gap-2 text-sm">
+                        <span className="tabular shrink-0 text-muted-foreground">#{pr.number}</span>
+                        <span className="truncate font-medium">{pr.title}</span>
+                        {checkout ? <CheckedOutChip worktree={checkout} /> : null}
+                      </div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">
+                        {pr.headRefName} → {pr.baseRefName}
+                      </div>
                     </div>
-                    <div className="truncate font-mono text-xs text-muted-foreground">
-                      {pr.headRefName} → {pr.baseRefName}
-                    </div>
-                  </div>
-                </button>
-              </li>
-            ))}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      <p className="shrink-0 text-xs leading-relaxed text-muted-foreground/70">
+        PRs already checked out in a worktree open as a live review of that checkout — edits write
+        to disk and changes underneath you get flagged. Everything else reviews the PR's current
+        head, frozen. PReviewer never checks anything out for you.
+      </p>
     </div>
+  );
+}
+
+function CheckedOutChip({ worktree }: { worktree: Worktree }) {
+  const name = worktree.path.split("/").filter(Boolean).pop() ?? worktree.path;
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-700 dark:text-amber-300"
+      title={`Checked out in ${worktree.path}. Reviewing opens the live working tree.`}
+    >
+      <FolderGit2 className="size-3 shrink-0" aria-hidden />
+      <span className="font-medium">{worktree.isMain ? "main worktree" : name}</span>
+    </span>
   );
 }
 

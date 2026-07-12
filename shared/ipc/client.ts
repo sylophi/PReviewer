@@ -71,7 +71,7 @@ export const diffs = {
     diffsClient.readReviewedSnapshot(input),
   writeFile: (input: { repoId: string; diffId: string; path: string; content: string }) =>
     diffsClient.writeFile(input),
-  createFromPullRequest: (input: { repoId: string; number: number; rightWorktreePath?: string }) =>
+  createFromPullRequest: (input: { repoId: string; number: number }) =>
     diffsClient.createFromPullRequest(input),
 } as const;
 
