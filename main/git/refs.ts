@@ -97,9 +97,22 @@ export async function tryResolveOrNull(cwd: string, ref: RefExpr): Promise<strin
   }
 }
 
-// git's well-known empty tree object; always present in every repo.
-// Diffing against it renders "everything is new".
-export const EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+// The empty tree object, which every repo can name. Diffing against it
+// renders "everything is new". The id is hash-algorithm dependent (the
+// familiar 4b825dc6… is the SHA-1 one; SHA-256 repos have a different,
+// 64-hex id), so ask git rather than hardcoding it. Cached per repo:
+// it's immutable for a given object format.
+const emptyTreeCache = new Map<string, string>();
+
+async function emptyTreeHash(cwd: string): Promise<string> {
+  const cached = emptyTreeCache.get(cwd);
+  if (cached !== undefined) return cached;
+  // Hashing /dev/null as a tree yields the empty tree in the repo's own
+  // object format, without writing anything.
+  const hash = (await run(cwd, ["hash-object", "-t", "tree", "/dev/null"])).trim();
+  emptyTreeCache.set(cwd, hash);
+  return hash;
+}
 
 // True when the repo has a HEAD symref but no commit behind it — a
 // freshly `git init`ed repo (or an orphan branch before its first
@@ -120,9 +133,9 @@ export async function resolveForDiff(cwd: string, ref: RefExpr): Promise<string 
     return await tryResolveOrNull(cwd, ref);
   } catch (err) {
     if ((ref.kind === "head" || ref.kind === "branch") && (await isUnbornHead(cwd))) {
-      if (ref.kind === "head") return EMPTY_TREE_HASH;
+      if (ref.kind === "head") return emptyTreeHash(cwd);
       const symref = (await runLenient(cwd, ["symbolic-ref", "-q", "HEAD"])).trim();
-      if (symref === `refs/heads/${ref.name}`) return EMPTY_TREE_HASH;
+      if (symref === `refs/heads/${ref.name}`) return emptyTreeHash(cwd);
     }
     throw err;
   }

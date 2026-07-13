@@ -59,8 +59,15 @@ export function DiffEditorBody({
   // `git checkout`) show up instead of pinning the first cached read.
   const [localRight, setLocalRight] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  // Mirrored into a ref for the adoption effect below. Written in an
+  // effect, not during render: a render React starts and then throws
+  // away would otherwise leave the ref describing state that never
+  // committed, and the effect could adopt disk content over a buffer
+  // that is actually dirty.
   const saveStateRef = useRef<SaveState>("idle");
-  saveStateRef.current = saveState;
+  useEffect(() => {
+    saveStateRef.current = saveState;
+  }, [saveState]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // `editable` is sourced from the IPC read result and may flip after
@@ -112,18 +119,31 @@ export function DiffEditorBody({
   );
 
   // Tab display width is a text-model option, not an editor option, so
-  // it's applied to both models through a ref whenever the setting (or
-  // the mounted editor) changes.
+  // it has to be pushed onto the models rather than passed in `options`.
+  // Applied on mount (the effect alone would miss it: onMount can fire
+  // after the last render, leaving the ref null every time the effect
+  // ran) and again whenever the setting changes or Monaco swaps models.
   const diffEditorRef = useRef<Parameters<DiffOnMount>[0] | null>(null);
+  const tabSize = editor.tabSize;
+  const applyTabSize = useCallback(
+    (instance: Parameters<DiffOnMount>[0] | null) => {
+      const model = instance?.getModel();
+      model?.original.updateOptions({ tabSize });
+      model?.modified.updateOptions({ tabSize });
+    },
+    [tabSize],
+  );
   useEffect(() => {
-    const model = diffEditorRef.current?.getModel();
-    model?.original.updateOptions({ tabSize: editor.tabSize });
-    model?.modified.updateOptions({ tabSize: editor.tabSize });
-  }, [editor.tabSize, localRight]);
+    applyTabSize(diffEditorRef.current);
+  }, [applyTabSize, localRight]);
 
   const onMount: DiffOnMount = useCallback(
     (editor) => {
       diffEditorRef.current = editor;
+      applyTabSize(editor);
+      // Monaco builds fresh models when the original/modified props
+      // change; model options don't carry over, so re-apply.
+      editor.onDidChangeModel(() => applyTabSize(editor));
       const layout = () => editor.layout();
       layout();
       window.addEventListener("resize", layout);

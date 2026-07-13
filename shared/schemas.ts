@@ -338,6 +338,10 @@ export const PullRequestSummarySchema = z.object({
   url: z.string().url(),
   headRefName: z.string(),
   baseRefName: z.string(),
+  // True when the head branch lives in a fork. Fork branch names carry
+  // no meaning locally ("main", "patch-1", …), so a local branch of the
+  // same name is NOT this PR and must never be matched to it.
+  isCrossRepository: z.boolean(),
 });
 export type PullRequestSummary = z.infer<typeof PullRequestSummarySchema>;
 

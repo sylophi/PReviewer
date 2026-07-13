@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { FolderGit2 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
-import type { RecentCommit, RefExpr, Worktree } from "@shared/schemas";
+import type { PullRequestSummary, RecentCommit, RefExpr, Worktree } from "@shared/schemas";
 import { useCreateDiff } from "@/hooks/diffs/useDiffs";
 import { useRepos } from "@/hooks/repos/useRepos";
 import { useRepoBranches } from "@/hooks/repos/useRepoBranches";
@@ -20,7 +20,7 @@ import { Field, Input } from "./ui/form-controls";
 import { Segmented } from "./ui/segmented";
 import { Skeleton } from "./ui/skeleton";
 import { WorktreeCombobox } from "./ui/worktree-combobox";
-import { diffTitle } from "@shared/refExpr";
+import { diffTitle, worktreeForPullRequest } from "@shared/refExpr";
 import { tildify } from "@/lib/projectPaths";
 import { cn, focusRing } from "@/lib/utils";
 import { notify } from "@/lib/toast";
@@ -475,16 +475,16 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
   const navigate = useNavigate();
   const [filter, setFilter] = useState("");
 
-  // Worktrees that already have a PR's head branch checked out get a
+  // PRs whose head branch is already checked out in a worktree get a
   // chip and float to the top: reviewing those opens the live checkout
   // (editable, tracks the files on disk) rather than a frozen SHA.
-  const worktreeByBranch = useMemo(() => {
-    const m = new Map<string, Worktree>();
-    for (const w of worktrees.data ?? []) {
-      if (w.branch) m.set(w.branch, w);
-    }
-    return m;
-  }, [worktrees.data]);
+  // worktreeForPullRequest is the same helper the main process binds
+  // with, so the chip can never promise a live review the backend
+  // won't give (notably: it excludes fork PRs).
+  const checkoutFor = useCallback(
+    (pr: PullRequestSummary): Worktree | null => worktreeForPullRequest(worktrees.data ?? [], pr),
+    [worktrees.data],
+  );
 
   const filtered = useMemo(() => {
     const all = prs.data ?? [];
@@ -499,10 +499,9 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
       : all;
     // Checked-out PRs first (stable within each group).
     return [...matched].sort(
-      (a, b) =>
-        Number(worktreeByBranch.has(b.headRefName)) - Number(worktreeByBranch.has(a.headRefName)),
+      (a, b) => Number(checkoutFor(b) !== null) - Number(checkoutFor(a) !== null),
     );
-  }, [prs.data, filter, worktreeByBranch]);
+  }, [prs.data, filter, checkoutFor]);
 
   const onPick = (number: number) => {
     create.mutate(
@@ -575,7 +574,7 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
         ) : (
           <ul className="divide-y divide-border">
             {filtered.map((pr) => {
-              const checkout = worktreeByBranch.get(pr.headRefName) ?? null;
+              const checkout = checkoutFor(pr);
               return (
                 <li key={pr.number}>
                   <button

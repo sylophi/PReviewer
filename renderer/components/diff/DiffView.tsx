@@ -19,7 +19,9 @@ import { TREE_MAX, TREE_MIN, TREE_WIDTH_KEY, readStoredTreeWidth } from "./treeW
 
 export function DiffView() {
   const { repoId, diffId } = useParams({ from: "/repos/$repoId/diffs/$diffId" });
-  const resolved = useResolvedDiff(repoId, diffId);
+  // live: the open diff re-resolves on window focus so external edits
+  // (agent, terminal) show up when the user comes back.
+  const resolved = useResolvedDiff(repoId, diffId, { live: true });
   const worktrees = useWorktrees(repoId);
   const navigate = useNavigate();
   const setReviewed = useSetReviewed();

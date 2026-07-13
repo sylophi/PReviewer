@@ -1,6 +1,7 @@
 import type { Diff, Repo } from "@shared/schemas";
 import { diffsContract } from "@shared/ipc/modules/diffs";
 import type { Handlers } from "@shared/ipc/types";
+import { worktreeForPullRequest } from "@shared/refExpr";
 import { findRepoOrThrow } from "../config/repos";
 import { type PullRequestView, viewPullRequest } from "../githubCli";
 import {
@@ -196,7 +197,7 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     // Right side: if some worktree already has the PR's branch checked
     // out, review the live checkout — editable, and needs-re-review
     // tracks the actual files on disk. Otherwise freeze to the head SHA.
-    const checkout = (await listWorktrees(cwd)).find((w) => w.branch === pr.headRefName);
+    const checkout = worktreeForPullRequest(await listWorktrees(cwd), pr);
     const right = checkout
       ? ({ kind: "workingTree" } as const)
       : ({ kind: "commit", hash: pr.headRefOid } as const);
@@ -209,10 +210,21 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     // (refreshed to the PR's current state) instead of creating a
     // duplicate. Reviewed marks survive; needs-re-review flags whatever
     // moved. Pinned diffs are left exactly as the user froze them.
-    const existing = (await listDiffs(repoId)).find((d) => d.prNumber === number);
+    // Diffs created before `prNumber` existed are matched by their
+    // generated "PR #<n>: " name so legacy reviews aren't duplicated.
+    const namePrefix = `PR #${number}: `;
+    const existing = (await listDiffs(repoId)).find(
+      (d) => d.prNumber === number || (d.prNumber === undefined && d.name.startsWith(namePrefix)),
+    );
     if (existing) {
       if (existing.pinned !== null) return existing;
-      return updateDiffRefs(repoId, existing.id, { left, right, rightWorktreePath, name });
+      return updateDiffRefs(repoId, existing.id, {
+        left,
+        right,
+        rightWorktreePath,
+        name,
+        prNumber: pr.number,
+      });
     }
 
     return createDiff({

@@ -2,6 +2,7 @@
 // pairs. The tabbed Monaco view reads file contents separately, but the
 // patch is still useful for export and as a fast file-list source.
 import type { FileChange, RefExpr } from "@shared/schemas";
+import { mapWithConcurrency } from "../util/concurrency";
 import { runLenient } from "./core";
 import { resolveForDiff } from "./refs";
 
@@ -72,23 +73,6 @@ async function diffAgainstWorkingTree(cwd: string, leftCommit: string): Promise<
     runLenient(cwd, ["diff", "--no-index", "/dev/null", f]),
   );
   return tracked + untrackedPatches.join("");
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = [];
-  let next = 0;
-  async function worker(): Promise<void> {
-    while (next < items.length) {
-      const idx = next++;
-      out[idx] = await fn(items[idx]);
-    }
-  }
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
-  return out;
 }
 
 async function computeFileList(

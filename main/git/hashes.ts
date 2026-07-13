@@ -2,6 +2,7 @@
 // "this file changed since you marked it reviewed."
 import { access } from "node:fs/promises";
 import { join } from "node:path";
+import { mapWithConcurrency } from "../util/concurrency";
 import { run, runLenient } from "./core";
 
 // SHA-1 repos produce 40-hex ids, SHA-256 repos 64-hex.
@@ -57,17 +58,18 @@ export async function blobHashesAtWorkingTree(
   paths: string[],
 ): Promise<Map<string, string>> {
   const map = new Map<string, string>();
+  // Bounded: a 5,000-file changeset would otherwise issue 5,000
+  // concurrent access() calls and saturate libuv's filesystem
+  // threadpool, stalling the atomic config writes behind mark-reviewed.
   const existing = (
-    await Promise.all(
-      paths.map(async (p) => {
-        try {
-          await access(join(cwd, p));
-          return p;
-        } catch {
-          return null;
-        }
-      }),
-    )
+    await mapWithConcurrency(paths, 64, async (p) => {
+      try {
+        await access(join(cwd, p));
+        return p;
+      } catch {
+        return null;
+      }
+    })
   ).filter((p): p is string => p !== null);
   for (let i = 0; i < existing.length; i += HASH_CHUNK) {
     const chunk = existing.slice(i, i + HASH_CHUNK);

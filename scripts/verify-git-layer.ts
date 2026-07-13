@@ -26,9 +26,11 @@ function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" });
 }
 
-function newRepo(): string {
+function newRepo(objectFormat?: "sha256"): string {
   const dir = mkdtempSync(join(tmpdir(), "previewer-verify-"));
-  git(dir, "init", "-q", "-b", "main");
+  const init = ["init", "-q", "-b", "main"];
+  if (objectFormat) init.push(`--object-format=${objectFormat}`);
+  git(dir, ...init);
   git(dir, "config", "user.email", "t@t.t");
   git(dir, "config", "user.name", "t");
   return dir;
@@ -134,7 +136,34 @@ async function main() {
     !map.has("b.txt") && !map.has("never-existed.txt"),
   );
 
-  for (const d of [unborn, renames, bin, snap, gone]) rmSync(d, { recursive: true, force: true });
+  // --- 6. SHA-256 repo: unborn HEAD + reviewed hashes ---
+  // The empty-tree object id is hash-algorithm dependent, and blob ids
+  // are 64-hex here; both used to be hardcoded to SHA-1 shapes.
+  const s256 = newRepo("sha256");
+  writeFileSync(join(s256, "new.ts"), "export const x = 1;\n");
+  try {
+    const r = await resolveAndDiff(s256, { kind: "head" }, { kind: "workingTree" });
+    check(
+      "sha256: unborn HEAD diffs against the right empty tree",
+      r.files.some((f) => f.path === "new.ts"),
+      r.files,
+    );
+  } catch (e) {
+    check("sha256: unborn HEAD diffs against the right empty tree", false, e);
+  }
+  git(s256, "add", ".");
+  git(s256, "commit", "-qm", "base");
+  writeFileSync(join(s256, "new.ts"), "export const x = 2;\n");
+  const s256Hash = await writeBlobFromWorkingTree(s256, "new.ts");
+  check("sha256: 64-hex blob id accepted", s256Hash !== null && s256Hash.length === 64, s256Hash);
+  check(
+    "sha256: snapshot content recoverable",
+    s256Hash !== null && (await readBlob(s256, s256Hash)) === "export const x = 2;\n",
+  );
+
+  for (const d of [unborn, renames, bin, snap, gone, s256]) {
+    rmSync(d, { recursive: true, force: true });
+  }
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURES`);
   process.exit(failures === 0 ? 0 : 1);
 }

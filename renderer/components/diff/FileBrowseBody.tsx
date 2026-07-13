@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Editor, type OnMount } from "@monaco-editor/react";
+import { FileQuestion } from "lucide-react";
 import { useEditorSettings } from "@/hooks/config/useEditorSettings";
 import { useReadFile } from "@/hooks/diffs/useReadFile";
 import { useTheme } from "@/hooks/ui/useTheme";
@@ -49,6 +50,14 @@ export function FileBrowseBody({
   // deleted between left and right).
   const content = rightQ.data?.content ?? leftQ.data?.content ?? "";
 
+  // Neither side has the file. Usually a restored tab whose file left
+  // the diff (the branch moved under a saved session), so say that
+  // rather than render an empty editor labelled "unchanged".
+  const settled = !loading && rightQ.data !== undefined && leftQ.data !== undefined;
+  if (settled && rightQ.data.content === null && leftQ.data.content === null) {
+    return <MissingFileBody path={path} />;
+  }
+
   return (
     <div className="relative h-full w-full">
       <div className="absolute right-3 top-2 z-10 rounded bg-card/80 px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground/70 shadow-sm ring-1 ring-border backdrop-blur-sm">
@@ -90,6 +99,24 @@ export function FileBrowseBody({
           lineDecorationsWidth: 4,
         }}
       />
+    </div>
+  );
+}
+
+// The path exists on neither side of the diff. The common way to get
+// here is a session-restored tab whose file left the diff while the
+// user was away (a force-push, a rebase, a reverted edit).
+function MissingFileBody({ path }: { path: string }) {
+  return (
+    <div className="flex h-full items-center justify-center p-8">
+      <div className="max-w-md text-center">
+        <FileQuestion className="mx-auto size-6 text-muted-foreground/60" aria-hidden />
+        <h2 className="mt-3 text-sm font-medium text-foreground">File not in this diff</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span className="font-mono">{path}</span> doesn't exist on either side. It may have been
+          removed since this tab was opened. Close the tab, or pick another file from the tree.
+        </p>
+      </div>
     </div>
   );
 }

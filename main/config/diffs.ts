@@ -157,6 +157,10 @@ export async function updateDiffRefs(
     right: RefExpr;
     rightWorktreePath: string | null;
     name?: string | undefined;
+    // Backfills the field on diffs created before it existed, so the
+    // next re-pick dedupes on the id rather than the name, and deleting
+    // the diff can prune the PR's keep-alive ref.
+    prNumber?: number | undefined;
   },
 ): Promise<Diff> {
   return withDiffLock(repoId, diffId, async () => {
@@ -166,6 +170,7 @@ export async function updateDiffRefs(
       left: updates.left,
       right: updates.right,
       ...(updates.name ? { name: updates.name } : {}),
+      ...(updates.prNumber ? { prNumber: updates.prNumber } : {}),
       updatedAt: Date.now(),
     };
     if (updates.rightWorktreePath) next.rightWorktreePath = updates.rightWorktreePath;

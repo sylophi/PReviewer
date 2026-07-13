@@ -55,19 +55,29 @@ export function resolvedDiffQueryOptions(repoId: string, diffId: string) {
   return {
     queryKey: queryKeys.resolvedDiff(repoId, diffId),
     queryFn: () => window.api.diffs.resolve({ repoId, diffId }),
-    // Fresh forever between events we control (mount, mutation
-    // invalidations) — but re-run on window focus, because coming back
-    // from the terminal or an agent session is exactly when the
-    // working tree has moved and needs-re-review flags must update.
+    // Fresh forever between events we control: mount and the mutations
+    // that invalidate this key. Resolving is expensive (a full git diff
+    // + numstat + per-file blob hashing), so nothing refetches it on a
+    // timer.
     staleTime: Number.POSITIVE_INFINITY,
-    refetchOnWindowFocus: "always",
   } as const;
 }
 
-export function useResolvedDiff(repoId: string | null, diffId: string | null) {
+// `live` forces a refetch whenever the window regains focus: coming
+// back from the terminal or an agent session is exactly when the
+// working tree has moved and needs-re-review must update. Only the diff
+// the user is actually reading opts in — the dashboard holds one of
+// these queries per diff, and forcing them all would fire a git diff
+// per saved diff on every ⌘Tab.
+export function useResolvedDiff(
+  repoId: string | null,
+  diffId: string | null,
+  opts: { live?: boolean } = {},
+) {
   return useQuery({
     ...resolvedDiffQueryOptions(repoId ?? "", diffId ?? ""),
     enabled: repoId !== null && diffId !== null,
+    ...(opts.live ? { refetchOnWindowFocus: "always" as const } : {}),
   });
 }
 

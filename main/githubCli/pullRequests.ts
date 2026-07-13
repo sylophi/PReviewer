@@ -20,7 +20,7 @@ export async function listPullRequests(cwd: string): Promise<PullRequestSummary[
       "--limit",
       "50",
       "--json",
-      "number,title,state,isDraft,url,headRefName,baseRefName",
+      "number,title,state,isDraft,url,headRefName,baseRefName,isCrossRepository",
     ],
     { cwd, timeout: 15_000, maxBuffer: 4 * 1024 * 1024 },
   );
@@ -46,7 +46,7 @@ export async function viewPullRequest(cwd: string, number: number): Promise<Pull
       "view",
       String(number),
       "--json",
-      "number,title,state,isDraft,url,headRefName,baseRefName,headRefOid,baseRefOid,mergeCommit",
+      "number,title,state,isDraft,url,headRefName,baseRefName,isCrossRepository,headRefOid,baseRefOid,mergeCommit",
     ],
     { cwd, timeout: 10_000 },
   );
