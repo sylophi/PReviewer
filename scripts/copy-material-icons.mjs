@@ -34,10 +34,7 @@ async function main() {
   }
 
   await mkdir(DEST, { recursive: true });
-  const [srcFiles, destFiles] = await Promise.all([
-    readdir(SRC),
-    readdir(DEST),
-  ]);
+  const [srcFiles, destFiles] = await Promise.all([readdir(SRC), readdir(DEST)]);
 
   const svgs = srcFiles.filter((f) => f.endsWith(".svg"));
   const destSet = new Set(destFiles);
@@ -65,11 +62,7 @@ async function main() {
       const from = join(SRC, src);
       const to = join(DEST, out);
       const [fromStat, toStat] = await Promise.all([stat(from), maybeStat(to)]);
-      if (
-        toStat &&
-        toStat.size === fromStat.size &&
-        toStat.mtimeMs >= fromStat.mtimeMs
-      ) {
+      if (toStat && toStat.size === fromStat.size && toStat.mtimeMs >= fromStat.mtimeMs) {
         return;
       }
       await copyFile(from, to);

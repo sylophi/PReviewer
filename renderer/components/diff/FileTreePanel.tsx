@@ -55,9 +55,8 @@ export function FileTreePanel({
       return files.map((f) => ({ kind: "changed" as const, file: f }));
     }
     const seen = new Set<string>();
-    const merged: Array<
-      { kind: "changed"; file: FileChange } | { kind: "plain"; path: string }
-    > = [];
+    const merged: Array<{ kind: "changed"; file: FileChange } | { kind: "plain"; path: string }> =
+      [];
     for (const p of fullPaths) {
       seen.add(p);
       const ch = changedByPath.get(p);
@@ -129,10 +128,7 @@ export function FileTreePanel({
   });
 
   return (
-    <aside
-      style={{ width }}
-      className="flex shrink-0 flex-col bg-card/30"
-    >
+    <aside style={{ width }} className="flex shrink-0 flex-col bg-card/30">
       <div className="flex shrink-0 flex-col gap-2 px-3 py-2.5">
         <div className="flex items-baseline gap-2">
           <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground/60">
@@ -162,9 +158,7 @@ export function FileTreePanel({
         ) : mode === "full" && fullLoading && !fullPaths ? (
           <div className="px-2 py-3 text-center text-muted-foreground">Loading tree…</div>
         ) : (
-          <div
-            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
-          >
+          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const row = flatRows[vi.index];
               if (!row) return null;
@@ -191,7 +185,9 @@ export function FileTreePanel({
                       node={row.node}
                       depth={row.depth}
                       active={row.node.path === activePath}
-                      setReviewedPending={setReviewed.isPending}
+                      pendingPath={
+                        setReviewed.isPending ? (setReviewed.variables?.path ?? null) : null
+                      }
                       onToggleReviewed={onToggleReviewed}
                       onClick={onClick}
                       onDoubleClick={onDoubleClick}

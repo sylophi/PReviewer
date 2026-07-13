@@ -41,9 +41,7 @@ export function TreeFolderRow({
         )}
       />
       <MaterialIcon kind="folder" name={iconName} expanded={!collapsed} className="size-3.5" />
-      <span className="min-w-0 truncate font-mono text-muted-foreground/90">
-        {node.name}
-      </span>
+      <span className="min-w-0 truncate font-mono text-muted-foreground/90">{node.name}</span>
     </button>
   );
 }
@@ -52,7 +50,7 @@ export function TreeFileRow({
   node,
   depth,
   active,
-  setReviewedPending,
+  pendingPath,
   onToggleReviewed,
   onClick,
   onDoubleClick,
@@ -60,7 +58,9 @@ export function TreeFileRow({
   node: TreeFile;
   depth: number;
   active: boolean;
-  setReviewedPending: boolean;
+  // Path of the file whose reviewed-mutation is in flight, so only
+  // that row's checkbox locks instead of every checkbox in the tree.
+  pendingPath: string | null;
   onToggleReviewed: (path: string, next: boolean) => void;
   onClick: (path: string) => void;
   onDoubleClick: (path: string) => void;
@@ -97,7 +97,7 @@ export function TreeFileRow({
       {file ? (
         <ReviewedCheckbox
           checked={file.reviewed}
-          pending={setReviewedPending}
+          pending={pendingPath === file.path}
           onChange={(next) => onToggleReviewed(file.path, next)}
         />
       ) : (

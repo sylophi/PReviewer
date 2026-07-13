@@ -1,11 +1,4 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Theme } from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 
@@ -81,10 +74,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoading, theme]);
 
-  const setTheme = useMemo(
-    () => (next: Theme) => patch.mutate({ theme: next }),
-    [patch],
-  );
+  const setTheme = useMemo(() => (next: Theme) => patch.mutate({ theme: next }), [patch]);
 
   const value = useMemo(() => ({ theme, resolved, setTheme }), [theme, resolved, setTheme]);
 

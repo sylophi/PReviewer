@@ -12,6 +12,25 @@ function diffsDir(repoId: string): string {
   return join(previewerRoot(), "repos", repoId, "diffs");
 }
 
+// Serialize read-modify-write cycles per diff file. atomicWriteJson
+// only prevents torn files; without this, two concurrent mutations
+// (e.g. rapid mark-reviewed clicks on different paths) would both read
+// the same base state and the second write would drop the first mark.
+const diffLocks = new Map<string, Promise<unknown>>();
+
+async function withDiffLock<T>(repoId: string, diffId: string, fn: () => Promise<T>): Promise<T> {
+  const key = `${repoId}/${diffId}`;
+  const prev = diffLocks.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn);
+  const settled = next.catch(() => undefined);
+  diffLocks.set(key, settled);
+  try {
+    return await next;
+  } finally {
+    if (diffLocks.get(key) === settled) diffLocks.delete(key);
+  }
+}
+
 function diffJsonPath(repoId: string, diffId: string): string {
   return join(diffsDir(repoId), `${diffId}.json`);
 }
@@ -50,6 +69,7 @@ interface CreateDiffInput {
   left: RefExpr;
   right: RefExpr;
   rightWorktreePath?: string | undefined;
+  prNumber?: number | undefined;
 }
 
 export async function createDiff(input: CreateDiffInput): Promise<Diff> {
@@ -63,6 +83,7 @@ export async function createDiff(input: CreateDiffInput): Promise<Diff> {
     left: input.left,
     right: input.right,
     ...(input.rightWorktreePath ? { rightWorktreePath: input.rightWorktreePath } : {}),
+    ...(input.prNumber ? { prNumber: input.prNumber } : {}),
     pinned: null,
     reviewed: {},
     createdAt: now,
@@ -86,23 +107,25 @@ export async function setReviewed(
   // file); we still set the mark, but needsReReview stays false.
   currentHash: string | null,
 ): Promise<Diff> {
-  const diff = await findDiffOrThrow(repoId, diffId);
-  const nextReviewed = { ...diff.reviewed };
-  if (reviewed) {
-    nextReviewed[path] = {
-      hash: currentHash ?? "",
-      markedAt: Date.now(),
+  return withDiffLock(repoId, diffId, async () => {
+    const diff = await findDiffOrThrow(repoId, diffId);
+    const nextReviewed = { ...diff.reviewed };
+    if (reviewed) {
+      nextReviewed[path] = {
+        hash: currentHash ?? "",
+        markedAt: Date.now(),
+      };
+    } else {
+      delete nextReviewed[path];
+    }
+    const next: Diff = {
+      ...diff,
+      reviewed: nextReviewed,
+      updatedAt: Date.now(),
     };
-  } else {
-    delete nextReviewed[path];
-  }
-  const next: Diff = {
-    ...diff,
-    reviewed: nextReviewed,
-    updatedAt: Date.now(),
-  };
-  await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
-  return next;
+    await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+    return next;
+  });
 }
 
 export async function setPin(
@@ -110,14 +133,51 @@ export async function setPin(
   diffId: string,
   pinned: { leftHash: string | null; rightHash: string | null } | null,
 ): Promise<Diff> {
-  const diff = await findDiffOrThrow(repoId, diffId);
-  const next: Diff = {
-    ...diff,
-    pinned,
-    updatedAt: Date.now(),
-  };
-  await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
-  return next;
+  return withDiffLock(repoId, diffId, async () => {
+    const diff = await findDiffOrThrow(repoId, diffId);
+    const next: Diff = {
+      ...diff,
+      pinned,
+      updatedAt: Date.now(),
+    };
+    await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+    return next;
+  });
+}
+
+// Re-point an existing diff at fresh refs (and optionally a new
+// worktree binding / name). Used when the user re-picks a PR that
+// already has a diff: the review marks stay, needs-re-review flags
+// surface whatever moved, and the diff follows the PR's current state.
+export async function updateDiffRefs(
+  repoId: string,
+  diffId: string,
+  updates: {
+    left: RefExpr;
+    right: RefExpr;
+    rightWorktreePath: string | null;
+    name?: string | undefined;
+    // Backfills the field on diffs created before it existed, so the
+    // next re-pick dedupes on the id rather than the name, and deleting
+    // the diff can prune the PR's keep-alive ref.
+    prNumber?: number | undefined;
+  },
+): Promise<Diff> {
+  return withDiffLock(repoId, diffId, async () => {
+    const diff = await findDiffOrThrow(repoId, diffId);
+    const next: Diff = {
+      ...diff,
+      left: updates.left,
+      right: updates.right,
+      ...(updates.name ? { name: updates.name } : {}),
+      ...(updates.prNumber ? { prNumber: updates.prNumber } : {}),
+      updatedAt: Date.now(),
+    };
+    if (updates.rightWorktreePath) next.rightWorktreePath = updates.rightWorktreePath;
+    else delete (next as { rightWorktreePath?: string }).rightWorktreePath;
+    await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+    return next;
+  });
 }
 
 // Drop the rightWorktreePath binding. Called when the bound worktree
@@ -125,10 +185,12 @@ export async function setPin(
 // main repo, so we strip the dead binding rather than fail every git
 // op (or delete the diff). No-op if there was no binding.
 export async function clearWorktreeBinding(repoId: string, diffId: string): Promise<Diff> {
-  const diff = await findDiffOrThrow(repoId, diffId);
-  if (!diff.rightWorktreePath) return diff;
-  const next: Diff = { ...diff, updatedAt: Date.now() };
-  delete (next as { rightWorktreePath?: string }).rightWorktreePath;
-  await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
-  return next;
+  return withDiffLock(repoId, diffId, async () => {
+    const diff = await findDiffOrThrow(repoId, diffId);
+    if (!diff.rightWorktreePath) return diff;
+    const next: Diff = { ...diff, updatedAt: Date.now() };
+    delete (next as { rightWorktreePath?: string }).rightWorktreePath;
+    await atomicWriteJson(diffJsonPath(repoId, diffId), DiffSchema.parse(next));
+    return next;
+  });
 }

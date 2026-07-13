@@ -18,11 +18,10 @@ export async function applyUserShellPath(): Promise<void> {
     // users put their PATH additions; -l also sources login files
     // (.zprofile, .bash_profile). Sentinel-wrap the value so any banner
     // .zshrc prints before our printf can be sliced off.
-    const { stdout } = await execFileP(
-      shell,
-      ["-ilc", `printf '%s%s' '${SENTINEL}' "$PATH"`],
-      { timeout: 5000, maxBuffer: 1024 * 1024 },
-    );
+    const { stdout } = await execFileP(shell, ["-ilc", `printf '%s%s' '${SENTINEL}' "$PATH"`], {
+      timeout: 5000,
+      maxBuffer: 1024 * 1024,
+    });
     const idx = stdout.lastIndexOf(SENTINEL);
     if (idx < 0) return;
     const captured = stdout.slice(idx + SENTINEL.length).trim();

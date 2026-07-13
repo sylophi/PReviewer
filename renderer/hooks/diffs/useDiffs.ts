@@ -48,14 +48,36 @@ export function useDiff(repoId: string, diffId: string) {
   });
 }
 
-export function useResolvedDiff(repoId: string | null, diffId: string | null) {
-  return useQuery({
-    queryKey: queryKeys.resolvedDiff(repoId ?? "", diffId ?? ""),
-    queryFn: () => window.api.diffs.resolve({ repoId: repoId!, diffId: diffId! }),
-    enabled: repoId !== null && diffId !== null,
-    // External git changes (terminal commits, branch switches) won't
-    // trigger a refetch; mutations explicitly invalidate this key.
+// Shared options so every observer of a resolved diff (DiffView, cards,
+// dashboard progress bands) hits the same cache entry with identical
+// semantics.
+export function resolvedDiffQueryOptions(repoId: string, diffId: string) {
+  return {
+    queryKey: queryKeys.resolvedDiff(repoId, diffId),
+    queryFn: () => window.api.diffs.resolve({ repoId, diffId }),
+    // Fresh forever between events we control: mount and the mutations
+    // that invalidate this key. Resolving is expensive (a full git diff
+    // + numstat + per-file blob hashing), so nothing refetches it on a
+    // timer.
     staleTime: Number.POSITIVE_INFINITY,
+  } as const;
+}
+
+// `live` forces a refetch whenever the window regains focus: coming
+// back from the terminal or an agent session is exactly when the
+// working tree has moved and needs-re-review must update. Only the diff
+// the user is actually reading opts in — the dashboard holds one of
+// these queries per diff, and forcing them all would fire a git diff
+// per saved diff on every ⌘Tab.
+export function useResolvedDiff(
+  repoId: string | null,
+  diffId: string | null,
+  opts: { live?: boolean } = {},
+) {
+  return useQuery({
+    ...resolvedDiffQueryOptions(repoId ?? "", diffId ?? ""),
+    enabled: repoId !== null && diffId !== null,
+    ...(opts.live ? { refetchOnWindowFocus: "always" as const } : {}),
   });
 }
 
@@ -116,8 +138,13 @@ export function useSetReviewed() {
   return useMutation<Diff, Error, SetReviewedArgs>({
     mutationFn: (args) => window.api.diffs.setReviewed(args),
     meta: { errorTitle: "Couldn't update review state" },
-    onSuccess: (diff) => {
+    onSuccess: (diff, args) => {
       invalidateResolvedDiff(queryClient, diff.repoId, diff.id);
+      // Re-marking updates the stored snapshot hash; drop the cached
+      // snapshot content so the "since review" view reads the new one.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.reviewedSnapshot(diff.repoId, diff.id, args.path),
+      });
     },
   });
 }

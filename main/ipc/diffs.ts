@@ -1,5 +1,7 @@
+import type { Diff, Repo } from "@shared/schemas";
 import { diffsContract } from "@shared/ipc/modules/diffs";
 import type { Handlers } from "@shared/ipc/types";
+import { worktreeForPullRequest } from "@shared/refExpr";
 import { findRepoOrThrow } from "../config/repos";
 import { type PullRequestView, viewPullRequest } from "../githubCli";
 import {
@@ -10,17 +12,21 @@ import {
   listDiffs,
   setPin,
   setReviewed,
+  updateDiffRefs,
 } from "../config/diffs";
 import {
   enrichWithReviewed,
   freezeRef,
   fullFileTree,
   isGitRepo,
+  listWorktrees,
+  readBlob,
   readFileAtRef,
   resolveAndDiff,
   rightSideHashForPath,
   rightSideIsLive,
   run,
+  runLenient,
   tryResolveOrNull,
   writeFileToWorkingTree,
 } from "../git";
@@ -31,13 +37,38 @@ async function loadDiffContext(repoId: string, diffId: string) {
   // A diff can be bound to a worktree (rightWorktreePath) so its right-side
   // git ops see that checkout's state. If the user has since deleted that
   // worktree, the path is no longer a git dir and every command here would
-  // fail with "not a git repository". Self-heal: strip the dead binding and
-  // fall back to the main repo, where the diff's refs still resolve.
+  // fail with "not a git repository". Self-heal rather than fail every op.
   if (diff.rightWorktreePath && !(await isGitRepo(diff.rightWorktreePath))) {
-    diff = await clearWorktreeBinding(repoId, diffId);
+    diff = await healDeadWorktreeBinding(repo, diff);
   }
   const cwd = diff.rightWorktreePath ?? repo.path;
   return { repo, diff, cwd };
+}
+
+// For a plain refs diff, dropping the dead binding is enough: the refs
+// still resolve against the main repo. A PR diff whose right side was
+// the live checkout must NOT fall back to reading the main worktree —
+// that would silently diff the wrong code. Freeze it to the PR's
+// keep-alive ref instead (fetched at creation, still in the object DB).
+async function healDeadWorktreeBinding(repo: Repo, diff: Diff): Promise<Diff> {
+  if (diff.prNumber && diff.right.kind === "workingTree") {
+    const sha = (
+      await runLenient(repo.path, [
+        "rev-parse",
+        "--verify",
+        "-q",
+        `refs/previewer/pull/${diff.prNumber}`,
+      ])
+    ).trim();
+    if (sha.length > 0) {
+      return updateDiffRefs(diff.repoId, diff.id, {
+        left: diff.left,
+        right: { kind: "commit", hash: sha },
+        rightWorktreePath: null,
+      });
+    }
+  }
+  return clearWorktreeBinding(diff.repoId, diff.id);
 }
 
 export const diffsHandlers: Handlers<typeof diffsContract> = {
@@ -51,6 +82,24 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
   get: ({ repoId, diffId }) => findDiffOrThrow(repoId, diffId),
 
   delete: async ({ repoId, diffId }) => {
+    // Best-effort cleanup of the private PR keep-alive ref, unless
+    // another diff for the same PR still needs it. Failures here never
+    // block the delete.
+    try {
+      const diff = await findDiffOrThrow(repoId, diffId);
+      if (diff.prNumber) {
+        const repo = await findRepoOrThrow(repoId);
+        const siblings = await listDiffs(repoId);
+        const stillUsed = siblings.some((d) => d.id !== diffId && d.prNumber === diff.prNumber);
+        if (!stillUsed) {
+          await run(repo.path, ["update-ref", "-d", `refs/previewer/pull/${diff.prNumber}`]).catch(
+            () => undefined,
+          );
+        }
+      }
+    } catch {
+      // The diff record may already be gone; deletion below is idempotent.
+    }
     await deleteDiff(repoId, diffId);
   },
 
@@ -102,6 +151,13 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     return { content, editable };
   },
 
+  readReviewedSnapshot: async ({ repoId, diffId, path }) => {
+    const { diff, cwd } = await loadDiffContext(repoId, diffId);
+    const stored = diff.reviewed[path];
+    if (!stored || stored.hash.length === 0) return { content: null };
+    return { content: await readBlob(cwd, stored.hash) };
+  },
+
   writeFile: async ({ repoId, diffId, path, content }) => {
     const { diff, cwd } = await loadDiffContext(repoId, diffId);
     if (diff.pinned !== null || !(await rightSideIsLive(cwd, diff.right))) {
@@ -113,7 +169,7 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     return { ok: true as const };
   },
 
-  createFromPullRequest: async ({ repoId, number, rightWorktreePath }) => {
+  createFromPullRequest: async ({ repoId, number }) => {
     const repo = await findRepoOrThrow(repoId);
     const cwd = repo.path;
     // gh's canonical SHAs for the PR. These match what `gh pr diff` uses.
@@ -130,19 +186,53 @@ export const diffsHandlers: Handlers<typeof diffsContract> = {
     // merge-base — same one `gh pr diff` uses.
     await run(cwd, ["fetch", "origin", pr.baseRefName]);
 
-    // Right side is always the PR's head SHA. Left side has two failure
-    // modes worth defending against:
+    // Left side has two failure modes worth defending against:
     //   1. Open PR: merge-base(head, base) is the correct three-dot anchor.
     //   2. Merged PR: head is reachable from base, so the naive merge-base
     //      equals head and the diff goes empty. The merge commit's first
     //      parent IS the base tip at merge time; pull that and diff.
     const leftSha = await computePrLeftSha(cwd, pr);
+    const left = { kind: "commit", hash: leftSha } as const;
+
+    // Right side: if some worktree already has the PR's branch checked
+    // out, review the live checkout — editable, and needs-re-review
+    // tracks the actual files on disk. Otherwise freeze to the head SHA.
+    const checkout = worktreeForPullRequest(await listWorktrees(cwd), pr);
+    const right = checkout
+      ? ({ kind: "workingTree" } as const)
+      : ({ kind: "commit", hash: pr.headRefOid } as const);
+    // Binding to the main worktree is a no-op (cwd already defaults to
+    // it); only record non-main checkouts.
+    const rightWorktreePath = checkout && !checkout.isMain ? checkout.path : null;
+    const name = `PR #${pr.number}: ${pr.title}`;
+
+    // Re-picking a PR that already has a diff opens the existing review
+    // (refreshed to the PR's current state) instead of creating a
+    // duplicate. Reviewed marks survive; needs-re-review flags whatever
+    // moved. Pinned diffs are left exactly as the user froze them.
+    // Diffs created before `prNumber` existed are matched by their
+    // generated "PR #<n>: " name so legacy reviews aren't duplicated.
+    const namePrefix = `PR #${number}: `;
+    const existing = (await listDiffs(repoId)).find(
+      (d) => d.prNumber === number || (d.prNumber === undefined && d.name.startsWith(namePrefix)),
+    );
+    if (existing) {
+      if (existing.pinned !== null) return existing;
+      return updateDiffRefs(repoId, existing.id, {
+        left,
+        right,
+        rightWorktreePath,
+        name,
+        prNumber: pr.number,
+      });
+    }
 
     return createDiff({
       repoId,
-      name: `PR #${pr.number}: ${pr.title}`,
-      left: { kind: "commit", hash: leftSha },
-      right: { kind: "commit", hash: pr.headRefOid },
+      name,
+      left,
+      right,
+      prNumber: pr.number,
       ...(rightWorktreePath ? { rightWorktreePath } : {}),
     });
   },
@@ -159,9 +249,7 @@ async function computePrLeftSha(cwd: string, pr: PullRequestView): Promise<strin
       await run(cwd, ["fetch", "origin", pr.mergeCommit.oid]).catch(() => {
         /* the SHA might already be reachable; ignore */
       });
-      const parent = (
-        await run(cwd, ["rev-parse", `${pr.mergeCommit.oid}^1`])
-      ).trim();
+      const parent = (await run(cwd, ["rev-parse", `${pr.mergeCommit.oid}^1`])).trim();
       if (parent) return parent;
     } catch {
       // Fall through to the merge-base attempt below.

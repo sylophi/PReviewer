@@ -9,13 +9,7 @@ import { buttonVariants } from "./ui/button";
 // pl-[92px] reserves the traffic-light column; the whole strip is a
 // drag region with no-drag holes carved by `ToolbarActions` (and any
 // nested interactive elements).
-export function AppToolbar({
-  className,
-  children,
-}: {
-  className?: string;
-  children: ReactNode;
-}) {
+export function AppToolbar({ className, children }: { className?: string; children: ReactNode }) {
   return (
     <header
       style={dragRegion("drag")}

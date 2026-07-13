@@ -2,10 +2,7 @@
 // through zod so a shape change in gh becomes a loud error instead of
 // a silent undefined downstream.
 import { z } from "zod";
-import {
-  type PullRequestSummary,
-  PullRequestSummarySchema,
-} from "@shared/schemas";
+import { type PullRequestSummary, PullRequestSummarySchema } from "@shared/schemas";
 import { runFile } from "./exec";
 import { ensureReady } from "./readiness";
 
@@ -23,7 +20,7 @@ export async function listPullRequests(cwd: string): Promise<PullRequestSummary[
       "--limit",
       "50",
       "--json",
-      "number,title,state,isDraft,url,headRefName,baseRefName",
+      "number,title,state,isDraft,url,headRefName,baseRefName,isCrossRepository",
     ],
     { cwd, timeout: 15_000, maxBuffer: 4 * 1024 * 1024 },
   );
@@ -49,7 +46,7 @@ export async function viewPullRequest(cwd: string, number: number): Promise<Pull
       "view",
       String(number),
       "--json",
-      "number,title,state,isDraft,url,headRefName,baseRefName,headRefOid,baseRefOid,mergeCommit",
+      "number,title,state,isDraft,url,headRefName,baseRefName,isCrossRepository,headRefOid,baseRefOid,mergeCommit",
     ],
     { cwd, timeout: 10_000 },
   );

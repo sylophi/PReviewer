@@ -36,7 +36,9 @@ async function scanForGitRepos(rootPath: string): Promise<string[]> {
       return;
     }
 
-    if (entries.some((e) => e.isDirectory() && e.name === ".git")) {
+    // `.git` is a directory in a standard checkout but a plain file in
+    // linked worktrees and submodules; both are usable repos.
+    if (entries.some((e) => e.name === ".git" && (e.isDirectory() || e.isFile()))) {
       results.push(dir);
       return;
     }

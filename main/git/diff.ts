@@ -2,8 +2,9 @@
 // pairs. The tabbed Monaco view reads file contents separately, but the
 // patch is still useful for export and as a fast file-list source.
 import type { FileChange, RefExpr } from "@shared/schemas";
+import { mapWithConcurrency } from "../util/concurrency";
 import { runLenient } from "./core";
-import { tryResolveOrNull } from "./refs";
+import { resolveForDiff } from "./refs";
 
 export interface ResolvedSides {
   leftCommit: string | null;
@@ -18,8 +19,8 @@ export async function resolveAndDiff(
   right: RefExpr,
 ): Promise<ResolvedSides> {
   const [leftCommit, rightCommit] = await Promise.all([
-    tryResolveOrNull(cwd, left),
-    tryResolveOrNull(cwd, right),
+    resolveForDiff(cwd, left),
+    resolveForDiff(cwd, right),
   ]);
 
   const leftIsWT = left.kind === "workingTree";
@@ -65,8 +66,11 @@ async function diffAgainstWorkingTree(cwd: string, leftCommit: string): Promise<
   ]);
   const untracked = untrackedRaw.split("\0").filter(Boolean);
   if (untracked.length === 0) return tracked;
-  const untrackedPatches = await Promise.all(
-    untracked.map((f) => runLenient(cwd, ["diff", "--no-index", "/dev/null", f])),
+  // One `git diff --no-index` process per untracked file, but bounded:
+  // an un-ignored node_modules would otherwise spawn thousands of
+  // concurrent git processes.
+  const untrackedPatches = await mapWithConcurrency(untracked, 8, (f) =>
+    runLenient(cwd, ["diff", "--no-index", "/dev/null", f]),
   );
   return tracked + untrackedPatches.join("");
 }
@@ -144,7 +148,11 @@ function mergeStatusAndNumstat(statusRaw: string, numstatRaw: string): FileChang
   const numByPath = parseNumstat(numstatRaw);
   return parseNameStatus(statusRaw).map((c) => {
     const num = numByPath.get(c.path);
-    return num ? { ...c, additions: num[0], deletions: num[1] } : c;
+    if (!num) return c;
+    // numstat reports "-\t-" for binary content; surface that as its
+    // own kind so the renderer can skip the text diff editor.
+    const kind = num.binary && c.kind !== "deleted" ? ("binary" as const) : c.kind;
+    return { ...c, kind, additions: num.additions, deletions: num.deletions };
   });
 }
 
@@ -202,12 +210,18 @@ function statusCodeToKind(code: string): FileChange["kind"] {
   return "modified";
 }
 
+interface NumstatEntry {
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
 // --numstat -z: "<adds>\t<dels>\t<path>\0" for normal entries, but
 // renames split the path across the NUL boundary too:
 // "<adds>\t<dels>\t\0<from>\0<to>\0". Binary files emit
-// "-\t-\t<path>\0"; recorded as 0/0 here.
-function parseNumstat(raw: string): Map<string, [number, number]> {
-  const out = new Map<string, [number, number]>();
+// "-\t-\t<path>\0"; recorded as 0/0 with the binary flag set.
+function parseNumstat(raw: string): Map<string, NumstatEntry> {
+  const out = new Map<string, NumstatEntry>();
   const parts = raw.split("\0");
   let i = 0;
   while (i < parts.length) {
@@ -228,9 +242,14 @@ function parseNumstat(raw: string): Map<string, [number, number]> {
       i++;
     }
     if (!path) continue;
+    const binary = adds === "-" && dels === "-";
     const a = adds === "-" ? 0 : Number(adds);
     const d = dels === "-" ? 0 : Number(dels);
-    out.set(path, [Number.isFinite(a) ? a : 0, Number.isFinite(d) ? d : 0]);
+    out.set(path, {
+      additions: Number.isFinite(a) ? a : 0,
+      deletions: Number.isFinite(d) ? d : 0,
+      binary,
+    });
   }
   return out;
 }
