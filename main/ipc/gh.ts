@@ -1,7 +1,8 @@
 import { ghContract } from "@shared/ipc/modules/gh";
 import type { Handlers } from "@shared/ipc/types";
 import { findRepoOrThrow } from "../config/repos";
-import { ghReadiness, listPullRequests } from "../githubCli";
+import { ghReadiness } from "../githubCli/readiness";
+import { listPullRequests } from "../githubCli/pullRequests";
 
 export const ghHandlers: Handlers<typeof ghContract> = {
   readiness: () => ghReadiness(),

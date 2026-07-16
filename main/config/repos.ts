@@ -3,7 +3,7 @@
 import { readdir, rm } from "node:fs/promises";
 import { basename, join } from "node:path";
 import { type Repo, RepoSchema } from "@shared/schemas";
-import { getOriginUrl, isGitRepo } from "../git";
+import { getOriginUrl, isGitRepo } from "../git/core";
 import { atomicWriteJson, readJsonOrNull } from "../util/jsonFile";
 import { previewerRoot } from "../util/paths";
 import { repoIdFromPath } from "../util/id";
@@ -27,11 +27,11 @@ export async function listRepos(): Promise<Repo[]> {
   } catch {
     return [];
   }
-  const repos = await Promise.all(
-    entries
-      .filter((e) => e.isDirectory())
-      .map((e) => readJsonOrNull(repoJsonPath(e.name), RepoSchema)),
-  );
+  const reads: Promise<Repo | null>[] = [];
+  for (const e of entries) {
+    if (e.isDirectory()) reads.push(readJsonOrNull(repoJsonPath(e.name), RepoSchema));
+  }
+  const repos = await Promise.all(reads);
   return repos.filter((r): r is Repo => r !== null).toSorted((a, b) => a.addedAt - b.addedAt);
 }
 

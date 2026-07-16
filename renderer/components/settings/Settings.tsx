@@ -300,12 +300,16 @@ function Toggle({
   );
 }
 
+// Hoisted so the default parameter is a stable reference (an inline
+// arrow default can't be reordered by React Compiler).
+const defaultStepperFormat = (v: number) => String(v);
+
 function Stepper({
   value,
   min,
   max,
   step = 1,
-  format = (v: number) => String(v),
+  format = defaultStepperFormat,
   onChange,
 }: {
   value: number;

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Editor, type OnMount } from "@monaco-editor/react";
 import { FileQuestion } from "lucide-react";
 import { useEditorSettings } from "@/hooks/config/useEditorSettings";
@@ -31,16 +31,27 @@ export function FileBrowseBody({
     editorRef.current?.getModel()?.updateOptions({ tabSize: editorOpts.tabSize });
   }, [editorOpts.tabSize]);
 
-  const onMount: OnMount = useCallback(
-    (editor) => {
-      editorRef.current = editor;
-      editor.getModel()?.updateOptions({ tabSize: editorOpts.tabSize });
-      const layout = () => editor.layout();
-      layout();
-      window.addEventListener("resize", layout);
+  // onMount registers a window resize listener; the editor library gives
+  // us no unmount callback, so the remover is stashed here and released
+  // by the unmount effect below.
+  const resizeCleanup = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      resizeCleanup.current?.();
+      resizeCleanup.current = null;
     },
-    [editorOpts.tabSize],
+    [],
   );
+
+  const onMount: OnMount = (editor) => {
+    editorRef.current = editor;
+    editor.getModel()?.updateOptions({ tabSize: editorOpts.tabSize });
+    const layout = () => editor.layout();
+    layout();
+    window.addEventListener("resize", layout);
+    resizeCleanup.current?.();
+    resizeCleanup.current = () => window.removeEventListener("resize", layout);
+  };
 
   const loading = rightQ.isLoading || leftQ.isLoading;
   const error = rightQ.error || leftQ.error;

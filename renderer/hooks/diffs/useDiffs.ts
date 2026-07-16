@@ -41,13 +41,6 @@ export function useAllDiffs(repos: Repo[]) {
   return { items, isLoading: queries.some((q) => q.isLoading) };
 }
 
-export function useDiff(repoId: string, diffId: string) {
-  return useQuery({
-    queryKey: queryKeys.diff(repoId, diffId),
-    queryFn: () => window.api.diffs.get({ repoId, diffId }),
-  });
-}
-
 // Shared options so every observer of a resolved diff (DiffView, cards,
 // dashboard progress bands) hits the same cache entry with identical
 // semantics.

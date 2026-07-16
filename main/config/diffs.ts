@@ -42,14 +42,13 @@ export async function listDiffs(repoId: string): Promise<Diff[]> {
   } catch {
     return [];
   }
-  const diffs = await Promise.all(
-    entries
-      .filter((e) => e.isFile() && e.name.endsWith(".json"))
-      .map((e) => {
-        const id = e.name.slice(0, -".json".length);
-        return readJsonOrNull(diffJsonPath(repoId, id), DiffSchema);
-      }),
-  );
+  const reads: Promise<Diff | null>[] = [];
+  for (const e of entries) {
+    if (!e.isFile() || !e.name.endsWith(".json")) continue;
+    const id = e.name.slice(0, -".json".length);
+    reads.push(readJsonOrNull(diffJsonPath(repoId, id), DiffSchema));
+  }
+  const diffs = await Promise.all(reads);
   return diffs.filter((d): d is Diff => d !== null).toSorted((a, b) => b.updatedAt - a.updatedAt);
 }
 

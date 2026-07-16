@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DiffEditor, type DiffOnMount } from "@monaco-editor/react";
 import { FileWarning, RefreshCcw } from "lucide-react";
 import type { FileChange, Worktree } from "@shared/schemas";
@@ -46,11 +46,13 @@ export function DiffEditorBody({
   // tab shows only what changed underneath them.
   const [sinceReview, setSinceReview] = useState(false);
   const snapshot = useReviewedSnapshot(repoId, diffId, path, sinceReview && file.needsReReview);
-  useEffect(() => {
-    // Re-marking reviewed clears needsReReview; drop back to the full
-    // diff instead of comparing the file against itself.
-    if (!file.needsReReview && sinceReview) setSinceReview(false);
-  }, [file.needsReReview, sinceReview]);
+  // Re-marking reviewed clears needsReReview; drop back to the full
+  // diff instead of comparing the file against itself. Adjusted during
+  // render (not in an effect) per the react.dev "adjusting state when a
+  // prop changes" pattern, so no stale frame is committed.
+  if (!file.needsReReview && sinceReview) {
+    setSinceReview(false);
+  }
 
   // Treat the modified side as locally-owned while the user has edits
   // in flight: refetches won't reset their cursor or pending changes.
@@ -59,16 +61,12 @@ export function DiffEditorBody({
   // `git checkout`) show up instead of pinning the first cached read.
   const [localRight, setLocalRight] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  // Mirrored into a ref for the adoption effect below. Written in an
-  // effect, not during render: a render React starts and then throws
-  // away would otherwise leave the ref describing state that never
-  // committed, and the effect could adopt disk content over a buffer
-  // that is actually dirty.
-  const saveStateRef = useRef<SaveState>("idle");
-  useEffect(() => {
-    saveStateRef.current = saveState;
-  }, [saveState]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // onMount registers a window resize listener; the editor library gives
+  // us no unmount callback, so the remover is stashed here and released
+  // by the unmount effect below.
+  const resizeCleanup = useRef<(() => void) | null>(null);
 
   // `editable` is sourced from the IPC read result and may flip after
   // mount. The change-content listener registered in onMount captures
@@ -76,47 +74,59 @@ export function DiffEditorBody({
   // always see the latest value without re-running onMount.
   const editableRef = useRef(false);
 
-  useEffect(() => {
-    if (rightQ.data === undefined) return;
-    const fetched = rightQ.data.content ?? "";
-    if (localRight === null) {
-      setLocalRight(fetched);
-      return;
+  // Adopt fetched content during render (react.dev "adjusting state
+  // when a prop changes"), not in an effect: the current render's
+  // saveState is read exactly (no ref mirror to fall out of sync), and
+  // a render React throws away also throws away the adoption, so disk
+  // content can never be adopted over a buffer that is actually dirty.
+  // `prevFetched` gates re-evaluation to renders where the fetched
+  // content actually changed — the equivalent of the old effect's dep
+  // array — so a save completing (saveState -> "saved" while rightQ
+  // still caches pre-edit content) can't re-adopt stale disk content
+  // over the user's just-saved edit.
+  const fetched = rightQ.data === undefined ? undefined : (rightQ.data.content ?? "");
+  const [prevFetched, setPrevFetched] = useState<string | undefined>(undefined);
+  if (fetched !== prevFetched) {
+    setPrevFetched(fetched);
+    if (fetched !== undefined) {
+      if (localRight === null) {
+        setLocalRight(fetched);
+      } else {
+        // Clean buffer + different on-disk content = an external change;
+        // adopt it. Dirty/saving buffers keep local ownership so a refetch
+        // racing a keystroke can't eat the user's edit.
+        const clean = saveState === "idle" || saveState === "saved";
+        if (clean && fetched !== localRight) {
+          setLocalRight(fetched);
+        }
+      }
     }
-    // Clean buffer + different on-disk content = an external change;
-    // adopt it. Dirty/saving buffers keep local ownership so a refetch
-    // racing a keystroke can't eat the user's edit.
-    const clean = saveStateRef.current === "idle" || saveStateRef.current === "saved";
-    if (clean && fetched !== localRight) {
-      setLocalRight(fetched);
-    }
-  }, [rightQ.data, localRight]);
+  }
 
   useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      resizeCleanup.current?.();
+      resizeCleanup.current = null;
     },
     [],
   );
 
-  const scheduleSave = useCallback(
-    (content: string) => {
-      setLocalRight(content);
-      setSaveState("dirty");
-      if (saveTimer.current) clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        setSaveState("saving");
-        write.mutate(
-          { repoId, diffId, path, content },
-          {
-            onSuccess: () => setSaveState("saved"),
-            onError: () => setSaveState("error"),
-          },
-        );
-      }, 400);
-    },
-    [repoId, diffId, path, write],
-  );
+  const scheduleSave = (content: string) => {
+    setLocalRight(content);
+    setSaveState("dirty");
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => {
+      setSaveState("saving");
+      write.mutate(
+        { repoId, diffId, path, content },
+        {
+          onSuccess: () => setSaveState("saved"),
+          onError: () => setSaveState("error"),
+        },
+      );
+    }, 400);
+  };
 
   // Tab display width is a text-model option, not an editor option, so
   // it has to be pushed onto the models rather than passed in `options`.
@@ -125,43 +135,41 @@ export function DiffEditorBody({
   // ran) and again whenever the setting changes or Monaco swaps models.
   const diffEditorRef = useRef<Parameters<DiffOnMount>[0] | null>(null);
   const tabSize = editor.tabSize;
-  const applyTabSize = useCallback(
-    (instance: Parameters<DiffOnMount>[0] | null) => {
-      const model = instance?.getModel();
-      model?.original.updateOptions({ tabSize });
-      model?.modified.updateOptions({ tabSize });
-    },
-    [tabSize],
-  );
+  const applyTabSize = (instance: Parameters<DiffOnMount>[0] | null) => {
+    const model = instance?.getModel();
+    model?.original.updateOptions({ tabSize });
+    model?.modified.updateOptions({ tabSize });
+  };
   useEffect(() => {
-    applyTabSize(diffEditorRef.current);
-  }, [applyTabSize, localRight]);
+    const model = diffEditorRef.current?.getModel();
+    model?.original.updateOptions({ tabSize });
+    model?.modified.updateOptions({ tabSize });
+  }, [tabSize, localRight]);
 
-  const onMount: DiffOnMount = useCallback(
-    (editor) => {
-      diffEditorRef.current = editor;
-      applyTabSize(editor);
-      // Monaco builds fresh models when the original/modified props
-      // change; model options don't carry over, so re-apply.
-      editor.onDidChangeModel(() => applyTabSize(editor));
-      const layout = () => editor.layout();
-      layout();
-      window.addEventListener("resize", layout);
-      const modifiedEditor = editor.getModifiedEditor();
-      modifiedEditor.onDidChangeModelContent((e) => {
-        // Programmatic content sets (mount, prop-driven model rebuilds,
-        // external refetch) arrive with `isFlush: true` and aren't user
-        // edits. Read-only diffs (PR heads, frozen pins) also never
-        // produce real edits; if we tried to save them the main
-        // process would reject the IPC call anyway.
-        if (e.isFlush) return;
-        if (!editableRef.current) return;
-        const next = modifiedEditor.getValue();
-        scheduleSave(next);
-      });
-    },
-    [scheduleSave],
-  );
+  const onMount: DiffOnMount = (editor) => {
+    diffEditorRef.current = editor;
+    applyTabSize(editor);
+    // Monaco builds fresh models when the original/modified props
+    // change; model options don't carry over, so re-apply.
+    editor.onDidChangeModel(() => applyTabSize(editor));
+    const layout = () => editor.layout();
+    layout();
+    window.addEventListener("resize", layout);
+    resizeCleanup.current?.();
+    resizeCleanup.current = () => window.removeEventListener("resize", layout);
+    const modifiedEditor = editor.getModifiedEditor();
+    modifiedEditor.onDidChangeModelContent((e) => {
+      // Programmatic content sets (mount, prop-driven model rebuilds,
+      // external refetch) arrive with `isFlush: true` and aren't user
+      // edits. Read-only diffs (PR heads, frozen pins) also never
+      // produce real edits; if we tried to save them the main
+      // process would reject the IPC call anyway.
+      if (e.isFlush) return;
+      if (!editableRef.current) return;
+      const next = modifiedEditor.getValue();
+      scheduleSave(next);
+    });
+  };
 
   const loading = leftQ.isLoading || rightQ.isLoading;
   const error = leftQ.error || rightQ.error;

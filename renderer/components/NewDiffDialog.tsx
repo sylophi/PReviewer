@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { FolderGit2 } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import type { PullRequestSummary, RecentCommit, RefExpr, Worktree } from "@shared/schemas";
@@ -123,37 +123,39 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
   const [right, setRight] = useState<FormRef>(emptyLeaf);
   const [name, setName] = useState<string>("");
 
-  useEffect(() => {
+  // Reset the pickers when the target repo changes. Adjusted during
+  // render (react.dev "adjusting state when a prop changes") instead of
+  // in an effect, so a stale frame for the old repo never commits.
+  const [prevRepoId, setPrevRepoId] = useState(repoId);
+  if (prevRepoId !== repoId) {
+    setPrevRepoId(repoId);
     setWorktreePath("");
     setLeft(emptyLeaf);
     setRight(emptyLeaf);
-  }, [repoId]);
+  }
 
-  useEffect(() => {
-    if (!worktrees.data || worktreePath !== "") return;
+  // Seed the worktree picker with the main worktree once the list
+  // loads. Render-time adjustment, same convergence as the reset above:
+  // it only fires while the picker is still unset.
+  if (worktreePath === "" && worktrees.data) {
     const main = worktrees.data.find((w) => w.isMain) ?? worktrees.data[0];
     if (main) setWorktreePath(main.path);
-  }, [worktrees.data, worktreePath]);
+  }
 
-  const selectedWorktree = useMemo(
-    () => worktrees.data?.find((w) => w.path === worktreePath) ?? null,
-    [worktrees.data, worktreePath],
-  );
+  const selectedWorktree = worktrees.data?.find((w) => w.path === worktreePath) ?? null;
 
-  useEffect(() => {
-    if (!selectedWorktree) return;
-    setLeft((prev) => {
-      if (prev.kind !== "branch" || prev.name !== "") return prev;
-      return selectedWorktree.branch ? { kind: "branch", name: selectedWorktree.branch } : prev;
-    });
-    setRight((prev) => {
-      if (prev.kind !== "branch" || prev.name !== "") return prev;
-      return { kind: "workingTree" };
-    });
-  }, [selectedWorktree]);
+  // Seed untouched endpoints from the selected worktree: left defaults
+  // to its checked-out branch, right to the working tree. Only fires
+  // while the leaf is a blank branch pick, so user edits stick.
+  if (selectedWorktree && left.kind === "branch" && left.name === "") {
+    if (selectedWorktree.branch) setLeft({ kind: "branch", name: selectedWorktree.branch });
+  }
+  if (selectedWorktree && right.kind === "branch" && right.name === "") {
+    setRight({ kind: "workingTree" });
+  }
 
-  const leftRef = useMemo(() => formToRef(left), [left]);
-  const rightRef = useMemo(() => formToRef(right), [right]);
+  const leftRef = formToRef(left);
+  const rightRef = formToRef(right);
 
   const create = useCreateDiff();
   const navigate = useNavigate();
@@ -481,27 +483,24 @@ function PullRequestMode({ repoId, onClose }: { repoId: string; onClose: () => v
   // worktreeForPullRequest is the same helper the main process binds
   // with, so the chip can never promise a live review the backend
   // won't give (notably: it excludes fork PRs).
-  const checkoutFor = useCallback(
-    (pr: PullRequestSummary): Worktree | null => worktreeForPullRequest(worktrees.data ?? [], pr),
-    [worktrees.data],
-  );
+  const checkoutFor = (pr: PullRequestSummary): Worktree | null =>
+    worktreeForPullRequest(worktrees.data ?? [], pr);
 
-  const filtered = useMemo(() => {
-    const all = prs.data ?? [];
-    const needle = filter.trim().toLowerCase();
-    const matched = needle
-      ? all.filter(
-          (pr) =>
-            pr.title.toLowerCase().includes(needle) ||
-            String(pr.number).includes(needle) ||
-            pr.headRefName.toLowerCase().includes(needle),
-        )
-      : all;
-    // Checked-out PRs first (stable within each group).
-    return [...matched].sort(
-      (a, b) => Number(checkoutFor(b) !== null) - Number(checkoutFor(a) !== null),
-    );
-  }, [prs.data, filter, checkoutFor]);
+  // React Compiler caches this computation; no manual useMemo needed.
+  const all = prs.data ?? [];
+  const needle = filter.trim().toLowerCase();
+  const matched = needle
+    ? all.filter(
+        (pr) =>
+          pr.title.toLowerCase().includes(needle) ||
+          String(pr.number).includes(needle) ||
+          pr.headRefName.toLowerCase().includes(needle),
+      )
+    : all;
+  // Checked-out PRs first (stable within each group).
+  const filtered = [...matched].sort(
+    (a, b) => Number(checkoutFor(b) !== null) - Number(checkoutFor(a) !== null),
+  );
 
   const onPick = (number: number) => {
     create.mutate(
@@ -691,6 +690,7 @@ function CommitPicker({
       {recentCommits.length > 0 ? (
         <select
           value=""
+          aria-label="Recent commits"
           onChange={(e) => {
             if (e.target.value) onChange(e.target.value);
           }}

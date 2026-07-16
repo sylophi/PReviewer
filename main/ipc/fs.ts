@@ -2,7 +2,7 @@ import { access, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { fsContract } from "@shared/ipc/modules/fs";
 import type { Handlers } from "@shared/ipc/types";
-import { isGitRepo } from "../git";
+import { isGitRepo } from "../git/core";
 import { toAbsolute } from "../util/paths";
 
 // Directories that virtually never contain git repos but are huge and

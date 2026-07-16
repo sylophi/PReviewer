@@ -6,8 +6,8 @@ import {
   listLocalBranches,
   listRecentCommits,
   listRemoteBranches,
-  listWorktrees,
-} from "../git";
+} from "../git/refs";
+import { listWorktrees } from "../git/worktrees";
 import { toAbsolute } from "../util/paths";
 
 export const reposHandlers: Handlers<typeof reposContract> = {

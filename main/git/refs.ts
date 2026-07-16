@@ -42,23 +42,24 @@ async function mergeBase(cwd: string, a: string, b: string): Promise<string> {
 
 export async function listLocalBranches(cwd: string): Promise<string[]> {
   const out = await run(cwd, ["for-each-ref", "--format=%(refname:short)", "refs/heads/"]);
-  return out
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const branches: string[] = [];
+  for (const line of out.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) branches.push(trimmed);
+  }
+  return branches;
 }
 
 export async function listRemoteBranches(cwd: string): Promise<string[]> {
   const out = await run(cwd, ["for-each-ref", "--format=%(refname:short)", "refs/remotes/"]);
-  return (
-    out
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      // origin/HEAD is a symbolic ref pointing at another branch; useless
-      // as a picker entry.
-      .filter((b) => !b.endsWith("/HEAD"))
-  );
+  const branches: string[] = [];
+  for (const line of out.split("\n")) {
+    const trimmed = line.trim();
+    // origin/HEAD is a symbolic ref pointing at another branch; useless
+    // as a picker entry.
+    if (trimmed && !trimmed.endsWith("/HEAD")) branches.push(trimmed);
+  }
+  return branches;
 }
 
 export async function currentBranch(cwd: string): Promise<string | null> {
@@ -77,14 +78,14 @@ export interface RecentCommit {
 // covers the typical "recent work" window.
 export async function listRecentCommits(cwd: string): Promise<RecentCommit[]> {
   const out = await runLenient(cwd, ["log", "-50", "--no-merges", "--format=%H%x1f%h%x1f%s%x1e"]);
-  return out
-    .split("\x1e")
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [hash, shortHash, subject] = entry.split("\x1f");
-      return { hash, shortHash, subject };
-    });
+  const commits: RecentCommit[] = [];
+  for (const raw of out.split("\x1e")) {
+    const entry = raw.trim();
+    if (!entry) continue;
+    const [hash, shortHash, subject] = entry.split("\x1f");
+    commits.push({ hash, shortHash, subject });
+  }
+  return commits;
 }
 
 export async function tryResolveOrNull(cwd: string, ref: RefExpr): Promise<string | null> {

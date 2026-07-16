@@ -3,7 +3,7 @@ import { diffsContract } from "@shared/ipc/modules/diffs";
 import type { Handlers } from "@shared/ipc/types";
 import { worktreeForPullRequest } from "@shared/refExpr";
 import { findRepoOrThrow } from "../config/repos";
-import { type PullRequestView, viewPullRequest } from "../githubCli";
+import { type PullRequestView, viewPullRequest } from "../githubCli/pullRequests";
 import {
   clearWorktreeBinding,
   createDiff,
@@ -14,26 +14,22 @@ import {
   setReviewed,
   updateDiffRefs,
 } from "../config/diffs";
-import {
-  enrichWithReviewed,
-  freezeRef,
-  fullFileTree,
-  isGitRepo,
-  listWorktrees,
-  readBlob,
-  readFileAtRef,
-  resolveAndDiff,
-  rightSideHashForPath,
-  rightSideIsLive,
-  run,
-  runLenient,
-  tryResolveOrNull,
-  writeFileToWorkingTree,
-} from "../git";
+import { isGitRepo, run, runLenient } from "../git/core";
+import { resolveAndDiff } from "../git/diff";
+import { readFileAtRef, rightSideIsLive, writeFileToWorkingTree } from "../git/files";
+import { readBlob } from "../git/hashes";
+import { tryResolveOrNull } from "../git/refs";
+import { enrichWithReviewed, freezeRef, rightSideHashForPath } from "../git/reviewed";
+import { fullFileTree } from "../git/tree";
+import { listWorktrees } from "../git/worktrees";
 
 async function loadDiffContext(repoId: string, diffId: string) {
-  const repo = await findRepoOrThrow(repoId);
-  let diff = await findDiffOrThrow(repoId, diffId);
+  // Independent lookups; fetch them concurrently.
+  const [repo, loadedDiff] = await Promise.all([
+    findRepoOrThrow(repoId),
+    findDiffOrThrow(repoId, diffId),
+  ]);
+  let diff = loadedDiff;
   // A diff can be bound to a worktree (rightWorktreePath) so its right-side
   // git ops see that checkout's state. If the user has since deleted that
   // worktree, the path is no longer a git dir and every command here would
