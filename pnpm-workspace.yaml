@@ -10,6 +10,12 @@
 # ignoreScripts: true, strictDepBuilds: true.
 nodeLinker: hoisted
 blockExoticSubdeps: false
+# Supply-chain cooldown, pinned project-locally so the guard holds even
+# on machines without the global rc. 10080 minutes = 7 days.
+minimumReleaseAge: 10080
+# Refuse updates whose trust signals (provenance, signatures) are weaker
+# than the currently installed version's.
+trustPolicy: no-downgrade
 # Per-package build-script trust. pnpm 11 uses this map to gate which
 # dependencies are allowed to run install scripts.
 allowBuilds:

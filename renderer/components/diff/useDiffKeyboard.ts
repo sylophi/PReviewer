@@ -38,9 +38,13 @@ export function modalIsOpen(): boolean {
 
 export function useDiffKeyboard(actions: DiffKeyboardActions): void {
   // Actions close over fresh state every render; route the listener
-  // through a ref so we register exactly once.
+  // through a ref so we register exactly once. Written in an effect
+  // (not during render) so a render React throws away never leaks
+  // uncommitted actions into the ref.
   const ref = useRef(actions);
-  ref.current = actions;
+  useEffect(() => {
+    ref.current = actions;
+  });
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

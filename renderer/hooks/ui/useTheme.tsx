@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import type { Theme } from "@shared/schemas";
 import { useGlobalConfig, useGlobalConfigPatch } from "@/hooks/config/useGlobalConfig";
 
@@ -74,9 +74,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [isLoading, theme]);
 
-  const setTheme = useMemo(() => (next: Theme) => patch.mutate({ theme: next }), [patch]);
+  // React Compiler memoizes the callback and the context value; no
+  // manual useMemo needed.
+  const setTheme = (next: Theme) => patch.mutate({ theme: next });
 
-  const value = useMemo(() => ({ theme, resolved, setTheme }), [theme, resolved, setTheme]);
+  const value = { theme, resolved, setTheme };
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

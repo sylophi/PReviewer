@@ -43,7 +43,10 @@ async function rightSideHashes(
 ): Promise<Map<string, string>> {
   // Deleted files have no right-side blob; skip them so ls-tree /
   // hash-object don't waste a call complaining about missing paths.
-  const livePaths = files.filter((f) => f.kind !== "deleted").map((f) => f.path);
+  const livePaths: string[] = [];
+  for (const f of files) {
+    if (f.kind !== "deleted") livePaths.push(f.path);
+  }
   if (livePaths.length === 0) return new Map();
   if (rightCommit !== null) {
     return blobHashesAtCommit(cwd, rightCommit, livePaths);

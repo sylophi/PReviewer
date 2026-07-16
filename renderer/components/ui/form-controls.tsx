@@ -1,4 +1,4 @@
-import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from "react";
+import type { InputHTMLAttributes, ReactNode } from "react";
 import { cn, focusRing } from "@/lib/utils";
 
 const baseField = cn(
@@ -17,8 +17,4 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 
 export function Input({ className, ...rest }: InputHTMLAttributes<HTMLInputElement>) {
   return <input className={cn(baseField, className)} {...rest} />;
-}
-
-export function Select({ className, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={cn(baseField, className)} {...rest} />;
 }

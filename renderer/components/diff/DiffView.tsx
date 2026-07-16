@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import type { FileChange, Worktree } from "@shared/schemas";
 import { useResolvedDiff, useSetReviewed } from "@/hooks/diffs/useDiffs";
@@ -46,7 +46,7 @@ export function DiffView() {
   // (event.clientX alone would only work if the rail sat at x=0). A
   // local `last` tracks the freshest width for persistence, since the
   // closure over `treeWidth` would otherwise be stale by mouseup.
-  const startResize = useCallback((e: React.MouseEvent) => {
+  const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
     const railEl = handle.previousElementSibling as HTMLElement | null;
@@ -74,29 +74,25 @@ export function DiffView() {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, []);
+  };
 
   // Look up the worktree the right side is bound to, so the header
   // chip can show both the worktree name and its current branch without
   // an extra IPC just for that label.
-  const boundWorktree = useMemo<Worktree | null>(() => {
-    if (!resolved.data?.diff.rightWorktreePath) return null;
-    return worktrees.data?.find((w) => w.path === resolved.data!.diff.rightWorktreePath) ?? null;
-  }, [resolved.data, worktrees.data]);
+  const boundWorktree: Worktree | null = resolved.data?.diff.rightWorktreePath
+    ? (worktrees.data?.find((w) => w.path === resolved.data!.diff.rightWorktreePath) ?? null)
+    : null;
 
-  const files = useMemo(() => resolved.data?.files ?? [], [resolved.data]);
+  const files = resolved.data?.files ?? [];
 
   // Paths in the changed-files set route to the DiffEditor; everything
   // else from the full tree opens as a plain Editor.
-  const fileByPath = useMemo(() => {
-    const m = new Map<string, FileChange>();
-    for (const f of files) m.set(f.path, f);
-    return m;
-  }, [files]);
+  const fileByPath = new Map<string, FileChange>();
+  for (const f of files) fileByPath.set(f.path, f);
 
   // Single click opens as preview (replaces any existing preview);
   // double click or starting to edit promotes the active tab to permanent.
-  const openFile = useCallback((path: string, mode: "preview" | "permanent") => {
+  const openFile = (path: string, mode: "preview" | "permanent") => {
     setTabs((prev) => {
       const existingIdx = prev.findIndex((t) => t.path === path);
       if (existingIdx >= 0) {
@@ -119,9 +115,9 @@ export function DiffView() {
       return [...prev, newTab];
     });
     setActivePath(path);
-  }, []);
+  };
 
-  const setTabDiffStyle = useCallback((path: string, next: DiffStyle) => {
+  const setTabDiffStyle = (path: string, next: DiffStyle) => {
     setTabs((prev) => {
       const idx = prev.findIndex((t) => t.path === path);
       if (idx < 0) return prev;
@@ -130,56 +126,48 @@ export function DiffView() {
       out[idx] = { ...out[idx], diffStyle: next };
       return out;
     });
-  }, []);
+  };
 
   // First mount, or any time the resolved diff loads and no tab is open
   // yet, land directly on the first unreviewed file (falling back to
   // the first file when everything is already reviewed). The user came
   // here to read; making them click to start the reading is friction.
-  useEffect(() => {
-    if (activePath !== null) return;
-    if (files.length === 0) return;
+  // Adjusted during render (not in an effect) so the empty state never
+  // commits; openFile only touches this component's own state, which
+  // makes the render-time call convergent.
+  if (activePath === null && files.length > 0) {
     const target = files.find((f) => !f.reviewed) ?? files[0];
     if (target) openFile(target.path, "preview");
-  }, [files, activePath, openFile]);
+  }
 
-  const closeTab = useCallback(
-    (path: string) => {
-      const idx = tabs.findIndex((t) => t.path === path);
-      if (idx < 0) return;
-      const next = tabs.toSpliced(idx, 1);
-      setTabs(next);
-      if (activePath === path) {
-        const fallback = next[idx] ?? next[idx - 1] ?? null;
-        setActivePath(fallback?.path ?? null);
-      }
-    },
-    [tabs, activePath],
-  );
+  const closeTab = (path: string) => {
+    const idx = tabs.findIndex((t) => t.path === path);
+    if (idx < 0) return;
+    const next = tabs.toSpliced(idx, 1);
+    setTabs(next);
+    if (activePath === path) {
+      const fallback = next[idx] ?? next[idx - 1] ?? null;
+      setActivePath(fallback?.path ?? null);
+    }
+  };
 
   // ----- keyboard actions -------------------------------------------------
 
   // Files after the active one (wrapping) that aren't reviewed yet; the
   // reading order the review loop advances through.
-  const nextUnreviewedAfter = useCallback(
-    (fromPath: string | null): FileChange | null => {
-      if (files.length === 0) return null;
-      const idx = fromPath ? files.findIndex((f) => f.path === fromPath) : -1;
-      const ordered = [...files.slice(idx + 1), ...files.slice(0, Math.max(idx, 0))];
-      return ordered.find((f) => !f.reviewed && f.path !== fromPath) ?? null;
-    },
-    [files],
-  );
+  const nextUnreviewedAfter = (fromPath: string | null): FileChange | null => {
+    if (files.length === 0) return null;
+    const idx = fromPath ? files.findIndex((f) => f.path === fromPath) : -1;
+    const ordered = [...files.slice(idx + 1), ...files.slice(0, Math.max(idx, 0))];
+    return ordered.find((f) => !f.reviewed && f.path !== fromPath) ?? null;
+  };
 
-  const stepTab = useCallback(
-    (delta: number) => {
-      if (tabs.length === 0) return;
-      const idx = tabs.findIndex((t) => t.path === activePath);
-      const next = tabs[(idx + delta + tabs.length) % tabs.length];
-      if (next) setActivePath(next.path);
-    },
-    [tabs, activePath],
-  );
+  const stepTab = (delta: number) => {
+    if (tabs.length === 0) return;
+    const idx = tabs.findIndex((t) => t.path === activePath);
+    const next = tabs[(idx + delta + tabs.length) % tabs.length];
+    if (next) setActivePath(next.path);
+  };
 
   useDiffKeyboard({
     toggleReviewedAndAdvance: () => {

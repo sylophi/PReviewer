@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { NewDiffDialog } from "@/components/NewDiffDialog";
 import { AddProjectView } from "@/components/palette/AddProjectView";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -29,13 +29,15 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<DialogState | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
 
-  const openAddRepo = useCallback(() => setActive({ kind: "addRepo" }), []);
-  const openNewDiff = useCallback((repoId: string) => {
+  // React Compiler memoizes these (and the context value below), so no
+  // manual useCallback/useMemo is needed.
+  const openAddRepo = () => setActive({ kind: "addRepo" });
+  const openNewDiff = (repoId: string) => {
     setActive({ kind: "newDiff", repoId });
-  }, []);
-  const confirm = useCallback((req: ConfirmRequest) => {
+  };
+  const confirm = (req: ConfirmRequest) => {
     setActive({ kind: "confirm", req });
-  }, []);
+  };
   const close = () => {
     setActive(null);
     setConfirmPending(false);
@@ -57,10 +59,7 @@ export function DialogsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const value = useMemo(
-    () => ({ openAddRepo, openNewDiff, confirm }),
-    [openAddRepo, openNewDiff, confirm],
-  );
+  const value = { openAddRepo, openNewDiff, confirm };
 
   return (
     <DialogsContext.Provider value={value}>

@@ -154,6 +154,7 @@ function ReviewedCheckbox({
       onDoubleClick={(e) => e.stopPropagation()}
       disabled={pending}
       title={checked ? "Mark unreviewed" : "Mark reviewed"}
+      aria-label={checked ? "Mark unreviewed" : "Mark reviewed"}
       className={cn(
         "grid size-4 shrink-0 place-items-center rounded border outline-none transition-colors",
         focusRing,
