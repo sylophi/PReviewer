@@ -144,14 +144,22 @@ function RefsMode({ repoId, onClose }: { repoId: string; onClose: () => void }) 
 
   const selectedWorktree = worktrees.data?.find((w) => w.path === worktreePath) ?? null;
 
-  // Seed untouched endpoints from the selected worktree: left defaults
-  // to its checked-out branch, right to the working tree. Only fires
-  // while the leaf is a blank branch pick, so user edits stick.
-  if (selectedWorktree && left.kind === "branch" && left.name === "") {
-    if (selectedWorktree.branch) setLeft({ kind: "branch", name: selectedWorktree.branch });
-  }
-  if (selectedWorktree && right.kind === "branch" && right.name === "") {
-    setRight({ kind: "workingTree" });
+  // Seed untouched endpoints when the selected worktree changes: left
+  // defaults to its checked-out branch, right to the working tree. Gated
+  // on the worktree change (not the leaves being blank) so the user can
+  // still pick "Branch" or clear a branch afterwards without the seed
+  // snapping their edit back.
+  const [prevWorktree, setPrevWorktree] = useState<Worktree | null>(null);
+  if (prevWorktree !== selectedWorktree) {
+    setPrevWorktree(selectedWorktree);
+    if (selectedWorktree) {
+      if (left.kind === "branch" && left.name === "" && selectedWorktree.branch) {
+        setLeft({ kind: "branch", name: selectedWorktree.branch });
+      }
+      if (right.kind === "branch" && right.name === "") {
+        setRight({ kind: "workingTree" });
+      }
+    }
   }
 
   const leftRef = formToRef(left);
