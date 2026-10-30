@@ -41,10 +41,12 @@ func cursorMark(selected bool) string {
 	return " "
 }
 
-// list keeps a scroll offset so the selected line stays in view, and
-// remembers where its lines were drawn so clicks can find them.
+// list keeps a scroll offset so the selected line stays in view, unless the
+// wheel scrolled it away, and remembers where its lines were drawn so clicks
+// can find them.
 type list struct {
 	cursor, offset int
+	free           bool // scrolled by the wheel, so the view doesn't follow the cursor
 	top, shown     int
 }
 
@@ -52,28 +54,33 @@ func (l *list) move(delta, n int) {
 	l.cursor = max(0, min(n-1, l.cursor+delta))
 }
 
-// wheel moves the cursor a line per wheel step.
-func (l *list) wheel(b tea.MouseButton, n int) {
+// wheel scrolls the view a line per wheel step, leaving the cursor be.
+func (l *list) wheel(b tea.MouseButton) {
 	switch b {
 	case tea.MouseWheelUp:
-		l.move(-1, n)
+		l.offset = max(0, l.offset-1)
 	case tea.MouseWheelDown:
-		l.move(1, n)
+		l.offset++ // window clamps it to the end
+	default:
+		return
 	}
+	l.free = true
 }
 
-// window returns the lines visible in height rows around line, the index of
-// the selected line within lines.
+// window returns the lines visible in height rows, scrolled to keep line, the
+// index of the selected line within lines, in view unless the wheel moved it.
 func (l *list) window(lines []string, line, height int) []string {
 	if height <= 0 || len(lines) <= height {
 		l.offset = 0
 		return lines
 	}
-	if line < l.offset {
-		l.offset = line
-	}
-	if line >= l.offset+height {
-		l.offset = line - height + 1
+	if !l.free {
+		if line < l.offset {
+			l.offset = line
+		}
+		if line >= l.offset+height {
+			l.offset = line - height + 1
+		}
 	}
 	l.offset = min(l.offset, len(lines)-height)
 	return lines[l.offset : l.offset+height]
