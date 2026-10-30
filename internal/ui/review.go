@@ -118,11 +118,11 @@ func (r *reviewScreen) click(msg tea.MouseClickMsg) tea.Cmd {
 	if !ok || i >= len(r.files) {
 		return nil
 	}
-	r.cursor = i
 	if msg.X < markColumns {
-		r.toggle()
+		r.toggle(r.files[i])
 		return nil
 	}
+	r.cursor = i
 	return r.open([]review.File{r.files[i]})
 }
 
@@ -169,7 +169,9 @@ func (r *reviewScreen) key(k string) tea.Cmd {
 	}
 	switch k {
 	case "space", "x":
-		r.toggle()
+		if f, ok := r.current(); ok {
+			r.toggle(f)
+		}
 	case "enter", "o", "l", "right":
 		if f, ok := r.current(); ok {
 			return r.open([]review.File{f})
@@ -190,31 +192,14 @@ func (r *reviewScreen) key(k string) tea.Cmd {
 	return nil
 }
 
-// toggle marks the selected file reviewed and moves on, or unmarks it.
-func (r *reviewScreen) toggle() {
-	f, ok := r.current()
-	if !ok {
-		return
-	}
+// toggle marks a file reviewed, or unmarks it.
+func (r *reviewScreen) toggle(f review.File) {
 	if r.rev.StateOf(f) == review.Reviewed {
 		r.rev.Unmark(f)
 	} else {
 		r.rev.Mark(f)
-		r.nextUnreviewed()
 	}
 	r.save()
-}
-
-// nextUnreviewed moves to the next file needing a look, wrapping around.
-func (r *reviewScreen) nextUnreviewed() {
-	n := len(r.files)
-	for i := 1; i <= n; i++ {
-		j := (r.cursor + i) % n
-		if r.rev.StateOf(r.files[j]) != review.Reviewed {
-			r.cursor = j
-			return
-		}
-	}
 }
 
 func (r *reviewScreen) open(files []review.File) tea.Cmd {
