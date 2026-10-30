@@ -3,6 +3,7 @@ package ui
 import (
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -40,13 +41,25 @@ func cursorMark(selected bool) string {
 	return " "
 }
 
-// list keeps a scroll offset so the selected line stays in view.
+// list keeps a scroll offset so the selected line stays in view, and
+// remembers where its lines were drawn so clicks can find them.
 type list struct {
 	cursor, offset int
+	top, shown     int
 }
 
 func (l *list) move(delta, n int) {
 	l.cursor = max(0, min(n-1, l.cursor+delta))
+}
+
+// wheel moves the cursor a line per wheel step.
+func (l *list) wheel(b tea.MouseButton, n int) {
+	switch b {
+	case tea.MouseWheelUp:
+		l.move(-1, n)
+	case tea.MouseWheelDown:
+		l.move(1, n)
+	}
 }
 
 // window returns the lines visible in height rows around line, the index of
@@ -66,11 +79,20 @@ func (l *list) window(lines []string, line, height int) []string {
 	return lines[l.offset : l.offset+height]
 }
 
+// clicked returns the index of the line left-clicked.
+func (l *list) clicked(msg tea.MouseClickMsg) (int, bool) {
+	i := msg.Y - l.top
+	return i + l.offset, msg.Button == tea.MouseLeft && i >= 0 && i < l.shown
+}
+
 // layout stacks header, body and footer, fitting the body to the space left.
-func layout(width, height int, header string, body func(height int) []string, footer string) string {
+func (l *list) layout(width, height int, header string, body func(height int) []string, footer string) string {
 	headerLines := strings.Split(header, "\n")
+	l.top = len(headerLines) + 1
+	bodyLines := body(height - len(headerLines) - 3)
+	l.shown = len(bodyLines)
 	lines := append(headerLines, "")
-	lines = append(lines, body(height-len(headerLines)-3)...)
+	lines = append(lines, bodyLines...)
 	for len(lines) < height-1 {
 		lines = append(lines, "")
 	}
