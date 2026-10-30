@@ -1,0 +1,15 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: dittofleet/go-cli-kit/.github/workflows/go-release.yml@main
+    with:
+      binary: prv
+      targets: darwin-arm64
