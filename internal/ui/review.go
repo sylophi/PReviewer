@@ -99,7 +99,7 @@ func (r *reviewScreen) Update(msg tea.Msg) (screen, tea.Cmd) {
 		return r, r.key(msg.String())
 
 	case tea.MouseWheelMsg:
-		r.wheel(msg.Button, len(r.files))
+		r.wheel(msg.Button)
 
 	case tea.MouseClickMsg:
 		return r, r.click(msg)
@@ -148,7 +148,7 @@ func (r *reviewScreen) save() {
 }
 
 func (r *reviewScreen) key(k string) tea.Cmd {
-	r.note = ""
+	r.note, r.free = "", false
 	n := len(r.files)
 	switch k {
 	case "q":
@@ -231,10 +231,10 @@ func (r *reviewScreen) View(width, height int) string {
 
 	body := func(height int) []string {
 		if !r.loaded {
-			return []string{dim.Render("loading…")}
+			return r.window([]string{dim.Render("loading…")}, 0, height)
 		}
 		if len(r.files) == 0 {
-			return []string{dim.Render("no changes")}
+			return r.window([]string{dim.Render("no changes")}, 0, height)
 		}
 		nameWidth, statWidth := 0, 0
 		for _, f := range r.files {

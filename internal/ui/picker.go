@@ -142,8 +142,7 @@ func (p *picker) Update(msg tea.Msg) (screen, tea.Cmd) {
 	case tea.KeyPressMsg:
 		return p, p.key(msg)
 	case tea.MouseWheelMsg:
-		p.wheel(msg.Button, len(p.visible()))
-		p.moved = true
+		p.wheel(msg.Button)
 	case tea.MouseClickMsg:
 		if i, ok := p.clicked(msg); ok && p.rows[i] >= 0 {
 			p.cursor, p.moved = p.rows[i], true
@@ -154,6 +153,7 @@ func (p *picker) Update(msg tea.Msg) (screen, tea.Cmd) {
 }
 
 func (p *picker) key(msg tea.KeyPressMsg) tea.Cmd {
+	p.free = false
 	n := len(p.visible())
 	switch msg.String() {
 	case "up", "ctrl+p":
