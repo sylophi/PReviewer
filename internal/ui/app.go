@@ -64,6 +64,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (a App) View() tea.View {
 	v := tea.NewView(a.screen.View(a.width, a.height))
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	v.WindowTitle = "prv"
 	return v
 }

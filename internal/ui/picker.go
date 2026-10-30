@@ -31,7 +31,8 @@ type picker struct {
 	refs      []git.Ref
 	entries   []entry
 	filter    string
-	moved     bool // the user picked a row, so late suggestions don't steal it
+	moved     bool  // the user picked a row, so late suggestions don't steal it
+	rows      []int // the entry drawn on each line, or -1 for a heading
 	err       error
 	list
 }
@@ -140,6 +141,14 @@ func (p *picker) Update(msg tea.Msg) (screen, tea.Cmd) {
 		}
 	case tea.KeyPressMsg:
 		return p, p.key(msg)
+	case tea.MouseWheelMsg:
+		p.wheel(msg.Button, len(p.visible()))
+		p.moved = true
+	case tea.MouseClickMsg:
+		if i, ok := p.clicked(msg); ok && p.rows[i] >= 0 {
+			p.cursor, p.moved = p.rows[i], true
+			return p, p.choose()
+		}
 	}
 	return p, nil
 }
@@ -165,19 +174,7 @@ func (p *picker) key(msg tea.KeyPressMsg) tea.Cmd {
 			p.cursor = 0
 		}
 	case "enter":
-		ref := p.filter
-		if v := p.visible(); len(v) > 0 {
-			ref = v[p.cursor].ref
-		}
-		if ref == "" {
-			return nil
-		}
-		if !p.repo.IsCommit(ref) {
-			p.err = fmt.Errorf("%q isn't a branch, tag or commit", ref)
-			return nil
-		}
-		p.err = nil
-		return func() tea.Msg { return openReviewMsg{ref} }
+		return p.choose()
 	default:
 		if msg.Text != "" && (msg.Mod == 0 || msg.Mod == tea.ModShift) {
 			p.filter += msg.Text
@@ -185,6 +182,24 @@ func (p *picker) key(msg tea.KeyPressMsg) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// choose compares against the selected ref, or the typed one when nothing
+// matches it.
+func (p *picker) choose() tea.Cmd {
+	ref := p.filter
+	if v := p.visible(); len(v) > 0 {
+		ref = v[p.cursor].ref
+	}
+	if ref == "" {
+		return nil
+	}
+	if !p.repo.IsCommit(ref) {
+		p.err = fmt.Errorf("%q isn't a branch, tag or commit", ref)
+		return nil
+	}
+	p.err = nil
+	return func() tea.Msg { return openReviewMsg{ref} }
 }
 
 func (p *picker) View(width, height int) string {
@@ -200,14 +215,19 @@ func (p *picker) View(width, height int) string {
 		refWidth[e.section] = max(refWidth[e.section], len(e.ref))
 	}
 	var lines []string
+	p.rows = p.rows[:0]
+	add := func(line string, entry int) {
+		lines = append(lines, line)
+		p.rows = append(p.rows, entry)
+	}
 	selected, cur := 0, ""
 	for i, e := range entries {
 		if e.section != cur {
 			if cur != "" {
-				lines = append(lines, "")
+				add("", -1)
 			}
 			cur = e.section
-			lines = append(lines, bold.Render(cur))
+			add(bold.Render(cur), -1)
 		}
 		if i == p.cursor {
 			selected = len(lines)
@@ -217,12 +237,12 @@ func (p *picker) View(width, height int) string {
 			name = accent.Render(name)
 		}
 		name += strings.Repeat(" ", refWidth[e.section]-len(e.ref))
-		lines = append(lines, cursorMark(i == p.cursor)+" "+name+"  "+blue.Render(e.label)+" "+dim.Render(e.detail))
+		add(cursorMark(i == p.cursor)+" "+name+"  "+blue.Render(e.label)+" "+dim.Render(e.detail), i)
 	}
 	if len(entries) == 0 && p.filter != "" {
-		lines = append(lines, dim.Render("enter to compare against "+p.filter))
+		add(dim.Render("enter to compare against "+p.filter), 0) // choose falls back to the filter
 	}
 
 	body := func(height int) []string { return p.window(lines, selected, height) }
-	return layout(width, height, header, body, help("type", "to filter", "↑↓", "move", "enter", "compare", "esc", "quit"))
+	return p.layout(width, height, header, body, help("type", "to filter", "↑↓", "move", "enter", "compare", "esc", "quit"))
 }

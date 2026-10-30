@@ -97,8 +97,33 @@ func (r *reviewScreen) Update(msg tea.Msg) (screen, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		return r, r.key(msg.String())
+
+	case tea.MouseWheelMsg:
+		r.wheel(msg.Button, len(r.files))
+
+	case tea.MouseClickMsg:
+		return r, r.click(msg)
 	}
 	return r, nil
+}
+
+// markColumns spans the cursor and review mark that start each fileLine.
+const markColumns = 4
+
+// click opens the file under the pointer, or toggles it reviewed when the
+// click lands on its mark.
+func (r *reviewScreen) click(msg tea.MouseClickMsg) tea.Cmd {
+	r.note = ""
+	i, ok := r.clicked(msg)
+	if !ok || i >= len(r.files) {
+		return nil
+	}
+	r.cursor = i
+	if msg.X < markColumns {
+		r.toggle()
+		return nil
+	}
+	return r.open([]review.File{r.files[i]})
 }
 
 // applyFiles swaps in fresh changes, keeping the cursor on the same file.
@@ -144,17 +169,7 @@ func (r *reviewScreen) key(k string) tea.Cmd {
 	}
 	switch k {
 	case "space", "x":
-		f, ok := r.current()
-		if !ok {
-			return nil
-		}
-		if r.rev.StateOf(f) == review.Reviewed {
-			r.rev.Unmark(f)
-		} else {
-			r.rev.Mark(f)
-			r.nextUnreviewed()
-		}
-		r.save()
+		r.toggle()
 	case "enter", "o", "l", "right":
 		if f, ok := r.current(); ok {
 			return r.open([]review.File{f})
@@ -173,6 +188,21 @@ func (r *reviewScreen) key(k string) tea.Cmd {
 		return r.open(files)
 	}
 	return nil
+}
+
+// toggle marks the selected file reviewed and moves on, or unmarks it.
+func (r *reviewScreen) toggle() {
+	f, ok := r.current()
+	if !ok {
+		return
+	}
+	if r.rev.StateOf(f) == review.Reviewed {
+		r.rev.Unmark(f)
+	} else {
+		r.rev.Mark(f)
+		r.nextUnreviewed()
+	}
+	r.save()
 }
 
 // nextUnreviewed moves to the next file needing a look, wrapping around.
@@ -232,7 +262,7 @@ func (r *reviewScreen) View(width, height int) string {
 		}
 		return r.window(lines, r.cursor, height)
 	}
-	return layout(width, height, header, body, footer)
+	return r.layout(width, height, header, body, footer)
 }
 
 // fileLine renders one file, with the stats right-aligned in a column after
