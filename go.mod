@@ -6,7 +6,7 @@ require (
 	charm.land/bubbletea/v2 v2.1.0
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/dittofleet/go-cli-kit v0.6.0
+	github.com/dittofleet/go-cli-kit v0.7.1
 )
 
 require (
